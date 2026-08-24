@@ -1,0 +1,3 @@
+{"type": "biolink:SmallMolecule", "identifiers": [{"i": "CHEBI:17234", "l": "Glucose", "t": []}, {"i": "PUBCHEM.SUBSTANCE:1234", "l": "D-glucose", "t": []}, {"i": "INCHIKEY:WQZGKKKJIJFFOK-GASJEMHNSA-N", "t": []}], "preferred_name": "glucose", "taxa": []}
+{"type": "biolink:SmallMolecule", "identifiers": [{"i": "PUBCHEM.COMPOUND:5793", "l": "glucose", "t": []}], "preferred_name": "D-glucose", "taxa": []}
+{"type": "biolink:Drug", "identifiers": [{"i": "DRUGBANK:DB00001", "l": "glucose", "t": []}], "preferred_name": "glucose", "taxa": []}

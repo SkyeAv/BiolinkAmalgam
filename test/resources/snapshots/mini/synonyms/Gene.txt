@@ -1,0 +1,9 @@
+{"curie": "NCBIGene:2538", "names": ["G6PC1", "G6PC1 gene", "glucose-6-phosphatase catalytic subunit 1"], "types": ["biolink:Gene"], "preferred_name": "G6PC1", "taxa": ["NCBITaxon:9606"], "clique_identifier_count": 5}
+{"curie": "NCBIGene:9001", "names": ["Examplein", "examplein-1", "EXA protein"], "types": ["biolink:Gene"], "preferred_name": "Examplein", "taxa": ["NCBITaxon:9606"], "clique_identifier_count": 2}
+{"curie": "HGNC:9002", "names": ["examplein"], "types": ["biolink:Gene"], "preferred_name": "examplein", "taxa": ["NCBITaxon:9606"], "clique_identifier_count": 1}
+{"curie": "NCBIGene:9003", "names": ["examplein mouse"], "types": ["biolink:Gene"], "preferred_name": "examplein", "taxa": ["NCBITaxon:10090"], "clique_identifier_count": 1}
+{"curie": "NCBIGene:9004", "names": ["rarein", "rarein alpha"], "types": ["biolink:Gene"], "preferred_name": "rarein", "taxa": ["NCBITaxon:1111111"], "clique_identifier_count": 1}
+{"curie": "NCBIGene:9005", "names": ["rarein"], "types": ["biolink:Gene"], "preferred_name": "rarein", "taxa": ["NCBITaxon:2222222"], "clique_identifier_count": 1}
+{"curie": "NCBIGene:9006", "names": ["uniquin", "shared alias"], "types": ["biolink:Gene"], "preferred_name": "uniquin", "taxa": ["NCBITaxon:9606"], "clique_identifier_count": 1}
+{"curie": "NCBIGene:9007", "names": ["duplicin", "shared alias"], "types": ["biolink:Gene"], "preferred_name": "duplicin", "taxa": ["NCBITaxon:9606"], "clique_identifier_count": 1}
+{"curie": "UMLS:C9999999", "names": ["nameless"], "types": ["biolink:Gene"], "preferred_name": null, "taxa": [], "clique_identifier_count": 1}

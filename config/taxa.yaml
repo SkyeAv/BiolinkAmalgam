@@ -1,0 +1,13 @@
+# Major NCBITaxon scopes for merge/arbitration bucketing.
+# A taxon listed here gets its own (category, taxon) scope; every other taxon
+# collapses into the shared "other-taxa" bucket so long-tail taxa don't multiply
+# shuffle rows. Promote a taxon here when its cliques matter to you.
+major_taxa:
+  - NCBITaxon:9606   # Homo sapiens — dominant in every biomedical source
+  - NCBITaxon:10090  # Mus musculus — primary model organism
+  - NCBITaxon:10116  # Rattus norvegicus — common model organism
+  - NCBITaxon:7955   # Danio rerio — zebrafish, common in gene sources
+  - NCBITaxon:7227   # Drosophila melanogaster — common in gene sources
+  - NCBITaxon:6239   # Caenorhabditis elegans — common in gene sources
+  - NCBITaxon:4932   # Saccharomyces cerevisiae — common in gene sources
+  - NCBITaxon:562    # Escherichia coli — common in protein sources

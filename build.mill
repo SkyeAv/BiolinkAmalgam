@@ -1,0 +1,55 @@
+// Amalgam build — Scala 2.13.16 + Spark 4.0.1 (matches the system Spark on PATH).
+// Two modules, one codebase:
+//   ./mill amalgam.assembly  → local jar, Spark bundled (`java -jar` / `local[*]` runs)
+//   ./mill cluster.assembly  → cluster jar, Spark compile-only (`spark-submit` provides it)
+package build
+
+import mill._
+import scalalib._
+import scalalib.scalafmt.ScalafmtModule
+
+trait AmalgamModule extends ScalaModule with ScalafmtModule {
+
+  def scalaVersion = "2.13.16"
+
+  // Mill 1.x defaults to <module>/src; this repo keeps the flat src/ + test/ layout.
+  override def moduleDir: os.Path = super.moduleDir / os.up
+
+  def sparkDeps = Seq(mvn"org.apache.spark::spark-sql:4.0.1")
+
+  def commonDeps = Seq(
+    mvn"com.lihaoyi::mainargs:0.7.8",
+    mvn"com.lihaoyi::os-lib:0.11.4",
+    mvn"org.apache.lucene:lucene-analysis-common:9.12.2",
+    mvn"org.yaml:snakeyaml:2.4"
+  )
+
+  def mainClass = Some("amalgam.Main")
+
+  def scalacOptions = Seq("-deprecation", "-feature")
+}
+
+object amalgam extends AmalgamModule {
+  def mvnDeps = commonDeps ++ sparkDeps
+
+  object test extends ScalaTests with TestModule.Utest with ScalafmtModule {
+    def utestVersion = "0.9.1"
+    // moduleDir inherits the outer override, so sources resolve to test/src as-is.
+
+    // Tests are offline by construction: FixtureSnapshotProvider throws on non-local
+    // paths. AMALGAM_SPARK_MASTER is intentionally unset here — ClusterSuite only runs
+    // via `make test-cluster`, which sets it.
+    def forkEnv = Map("SPARK_LOCAL_IP" -> "127.0.0.1")
+
+    // Parallel test execution across forked JVMs.
+    def testParallelism = true
+  }
+}
+
+object cluster extends AmalgamModule {
+  def mvnDeps = commonDeps
+
+  // Compile-only ("provided"): present on the compile classpath, excluded from
+  // the assembly — the Spark cluster supplies these jars at runtime.
+  def compileMvnDeps = sparkDeps
+}

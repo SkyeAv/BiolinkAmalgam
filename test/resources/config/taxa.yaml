@@ -1,0 +1,4 @@
+# Test copy of the repo's config/taxa.yaml — keep in sync.
+major_taxa:
+  - NCBITaxon:9606   # Homo sapiens
+  - NCBITaxon:10090  # Mus musculus

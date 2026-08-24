@@ -1,0 +1,3 @@
+# Test copy of the repo's config/promote_prefixes.yaml — keep in sync.
+promote_prefixes:
+  - INCHIKEY

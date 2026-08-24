@@ -1,0 +1,9 @@
+{"type": "biolink:Gene", "ic": "100", "identifiers": [{"i": "NCBIGene:2538", "l": "G6PC1", "d": [], "t": ["NCBITaxon:9606"]}, {"i": "ENSEMBL:ENSG00000131482", "l": "G6PC1 (Hsap)", "d": [], "t": []}, {"i": "HGNC:4056", "l": "G6PC1", "d": [], "t": []}, {"i": "OMIM:613742", "d": [], "t": []}, {"i": "UMLS:C1414892", "l": "G6PC1 gene", "d": [], "t": []}], "preferred_name": "G6PC1", "taxa": ["NCBITaxon:9606"]}
+{"type": "biolink:Gene", "identifiers": [{"i": "NCBIGene:9001", "l": "Examplein", "t": ["NCBITaxon:9606"]}, {"i": "ENSEMBL:ENSG00000999999", "l": "EXAMPLEIN", "t": []}], "preferred_name": "Examplein", "taxa": ["NCBITaxon:9606"]}
+{"type": "biolink:Gene", "identifiers": [{"i": "HGNC:9002", "l": "examplein", "t": ["NCBITaxon:9606"]}], "preferred_name": " examplein", "taxa": ["NCBITaxon:9606"]}
+{"type": "biolink:Gene", "identifiers": [{"i": "NCBIGene:9003", "l": "examplein", "t": ["NCBITaxon:10090"]}], "preferred_name": "examplein", "taxa": ["NCBITaxon:10090"]}
+{"type": "biolink:Gene", "identifiers": [{"i": "NCBIGene:9004", "l": "rarein", "t": ["NCBITaxon:1111111"]}], "preferred_name": "rarein", "taxa": ["NCBITaxon:1111111"]}
+{"type": "biolink:Gene", "identifiers": [{"i": "NCBIGene:9005", "l": "rarein", "t": ["NCBITaxon:2222222"]}], "preferred_name": "rarein", "taxa": ["NCBITaxon:2222222"]}
+{"type": "biolink:Gene", "identifiers": [{"i": "NCBIGene:9006", "l": "uniquin", "t": ["NCBITaxon:9606"]}], "preferred_name": "uniquin", "taxa": ["NCBITaxon:9606"]}
+{"type": "biolink:Gene", "identifiers": [{"i": "NCBIGene:9007", "l": "duplicin", "t": ["NCBITaxon:9606"]}], "preferred_name": "duplicin", "taxa": ["NCBITaxon:9606"]}
+{"type": "biolink:Gene", "identifiers": [{"i": "UMLS:C9999999", "l": "nameless", "t": []}], "preferred_name": null, "taxa": []}

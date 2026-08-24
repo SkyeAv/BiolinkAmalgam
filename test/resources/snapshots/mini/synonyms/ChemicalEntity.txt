@@ -1,0 +1,3 @@
+{"curie": "CHEBI:17234", "names": ["Glucose", "D-glucose", "glucoses"], "types": ["biolink:SmallMolecule"], "preferred_name": "glucose", "taxa": [], "clique_identifier_count": 3}
+{"curie": "PUBCHEM.COMPOUND:5793", "names": ["glucose"], "types": ["biolink:SmallMolecule"], "preferred_name": "D-glucose", "taxa": [], "clique_identifier_count": 1}
+{"curie": "DRUGBANK:DB00001", "names": ["glucose"], "types": ["biolink:Drug"], "preferred_name": "glucose", "taxa": [], "clique_identifier_count": 1}
