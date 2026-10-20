@@ -29,6 +29,51 @@ object Config {
     val empty: FilterConfig = FilterConfig(Set.empty, Map.empty, Seq.empty, Set.empty, Seq.empty, Seq.empty)
   }
 
+  /** aria2c tuning (config/download.yaml `aria2:`). */
+  case class Aria2Config(
+      binary: String = "aria2c",
+      connectionsPerFile: Int = 16,
+      split: Int = 16,
+      minSplitSize: String = "16M",
+      concurrentFiles: Int = 8,
+      extraArgs: Seq[String] = Seq.empty
+  )
+
+  /** Snapshot download settings (config/download.yaml). `engine` is `aria2` or `jdk`. */
+  case class DownloadConfig(
+      engine: String = "aria2",
+      baseUrl: String = "https://stars.renci.org/var/babel_outputs",
+      aria2: Aria2Config = Aria2Config(),
+      jdkConcurrency: Int = 8
+  )
+
+  def loadDownload(path: os.Path): DownloadConfig = {
+    if (!os.exists(path)) return DownloadConfig()
+    val doc = yamlDoc(path)
+    val d = DownloadConfig()
+    val a = Option(doc.get("aria2")).map(_.asInstanceOf[java.util.Map[String, AnyRef]]).getOrElse(new java.util.HashMap)
+    def str(m: java.util.Map[String, AnyRef], k: String, dflt: String) = Option(m.get(k)).map(_.toString).getOrElse(dflt)
+    def int(m: java.util.Map[String, AnyRef], k: String, dflt: Int) = Option(m.get(k)).map(_.toString.toInt).getOrElse(dflt)
+    val engine = str(doc, "engine", d.engine)
+    if (engine != "aria2" && engine != "jdk")
+      throw new IllegalArgumentException(s"download engine must be 'aria2' or 'jdk', got '$engine' in $path")
+    DownloadConfig(
+      engine = engine,
+      baseUrl = str(doc, "base_url", d.baseUrl),
+      aria2 = Aria2Config(
+        binary = str(a, "binary", d.aria2.binary),
+        connectionsPerFile = int(a, "connections_per_file", d.aria2.connectionsPerFile),
+        split = int(a, "split", d.aria2.split),
+        minSplitSize = str(a, "min_split_size", d.aria2.minSplitSize),
+        concurrentFiles = int(a, "concurrent_files", d.aria2.concurrentFiles),
+        extraArgs = Option(a.get("extra_args"))
+          .map(_.asInstanceOf[java.util.List[String]].asScala.toSeq)
+          .getOrElse(Seq.empty)
+      ),
+      jdkConcurrency = int(doc, "jdk_concurrency", d.jdkConcurrency)
+    )
+  }
+
   /** Taxon scoping for merge and arbitration. */
   val NoTaxon: String = "__NO_TAXON__"
   val OtherTaxa: String = "__OTHER_TAXA__"

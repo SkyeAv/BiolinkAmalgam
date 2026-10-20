@@ -2,7 +2,7 @@ package biolinkamalgam
 
 import biolinkamalgam.config.Config
 import biolinkamalgam.export.Manifest
-import biolinkamalgam.ingest.{FixtureSnapshotProvider, RemoteSnapshotProvider}
+import biolinkamalgam.ingest.{Aria2BulkDownloader, FixtureSnapshotProvider, JdkBulkDownloader, RemoteSnapshotProvider}
 import biolinkamalgam.spark.SparkSupport
 import mainargs.main
 
@@ -11,12 +11,15 @@ import mainargs.main
   */
 object Main {
 
-  private def sparkConf(profile: Option[String], extra: Map[String, String]): Map[String, String] = {
+  /** Resolve (master, spark conf) from a profile. The reserved `master` key is pulled out of the conf; an explicit
+    * CLI `--master` wins over the profile's.
+    */
+  private def sparkSettings(profile: Option[String], cliMaster: Option[String]): (Option[String], Map[String, String]) = {
     val profileConf: Map[String, String] = profile match {
       case Some(name) => Config.loadProfile(os.pwd / "config" / "profiles.yaml", name)
       case None       => Map.empty
     }
-    profileConf ++ extra
+    (cliMaster.orElse(profileConf.get("master")), profileConf - "master")
   }
 
   @main def run(
@@ -27,6 +30,8 @@ object Main {
       promoteConfig: String = "config/promote_prefixes.yaml",
       filtersConfig: String = "config/filters.yaml",
       download: Option[String] = None,
+      downloadConfig: String = "config/download.yaml",
+      snapshotDir: Option[String] = None,
       master: Option[String] = None,
       profile: Option[String] = None,
       simpleExport: mainargs.Flag = mainargs.Flag(false)
@@ -34,16 +39,20 @@ object Main {
     val babelDir: Option[os.Path] = (babel, download) match {
       case (Some(dir), _) => Some(new FixtureSnapshotProvider(os.Path(dir, os.pwd)).ensureSnapshot(os.pwd))
       case (None, Some(version)) =>
-        val dir = os.pwd / "out" / "snapshots" / version
-        Some(new RemoteSnapshotProvider(version).ensureSnapshot(dir))
+        // Not under out/: mill owns that dir and `mill clean` would wipe a
+        // multi-GB snapshot.
+        val dir = snapshotDir.map(os.Path(_, os.pwd)).getOrElse(os.pwd / "data" / "snapshots" / version)
+        val dl = Config.loadDownload(os.Path(downloadConfig, os.pwd))
+        val engine = dl.engine match {
+          case "aria2" => new Aria2BulkDownloader(dl.aria2)
+          case _       => new JdkBulkDownloader(dl.jdkConcurrency)
+        }
+        Some(new RemoteSnapshotProvider(version, engine, dl.baseUrl).ensureSnapshot(dir))
       case (None, None) => None
     }
 
-    val spark = SparkSupport.session(
-      "biolinkamalgam",
-      master,
-      sparkConf(profile, Map.empty)
-    )
+    val (resolvedMaster, conf) = sparkSettings(profile, master)
+    val spark = SparkSupport.session("biolinkamalgam", resolvedMaster, conf)
     try {
       val stages = Pipeline.run(
         spark,
@@ -85,7 +94,8 @@ object Main {
       profile: Option[String] = Some("local"),
       tag: String = ""
   ): Unit = {
-    val spark = SparkSupport.session("biolinkamalgam-bench", master, sparkConf(profile, Map.empty))
+    val (resolvedMaster, conf) = sparkSettings(profile, master)
+    val spark = SparkSupport.session("biolinkamalgam-bench", resolvedMaster, conf)
     try {
       val tmpOut = os.temp.dir(prefix = "biolinkamalgam-bench")
       try {

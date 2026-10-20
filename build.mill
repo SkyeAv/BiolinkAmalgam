@@ -2,13 +2,19 @@
 // Two modules, one codebase:
 //   ./mill biolinkamalgam.assembly  → local jar, Spark bundled (`java -jar` / `local[*]` runs)
 //   ./mill cluster.assembly  → cluster jar, Spark compile-only (`spark-submit` provides it)
+//| mvnDeps:
+//| - com.goyeau::mill-scalafix::0.6.0
 package build
 
+import com.goyeau.mill.scalafix.ScalafixModule
 import mill._
 import scalalib._
 import scalalib.scalafmt.ScalafmtModule
 
-trait BiolinkAmalgamModule extends ScalaModule with ScalafmtModule {
+// Lint = scalafmt (format) + scalafix (OrganizeImports, RemoveUnused,
+// DisableSyntax; see .scalafix.conf). `make lint` checks both, `make fix`
+// applies both.
+trait BiolinkAmalgamModule extends ScalaModule with ScalafmtModule with ScalafixModule {
 
   def scalaVersion = "2.13.16"
 
@@ -26,13 +32,14 @@ trait BiolinkAmalgamModule extends ScalaModule with ScalafmtModule {
 
   def mainClass = Some("biolinkamalgam.Main")
 
-  def scalacOptions = Seq("-deprecation", "-feature")
+  // -Wunused feeds scalafix RemoveUnused (it reads compiler diagnostics).
+  def scalacOptions = Seq("-deprecation", "-feature", "-Wunused:imports,privates,locals,implicits")
 }
 
 object biolinkamalgam extends BiolinkAmalgamModule {
   def mvnDeps = commonDeps ++ sparkDeps
 
-  object test extends ScalaTests with TestModule.Utest with ScalafmtModule {
+  object test extends ScalaTests with TestModule.Utest with ScalafmtModule with ScalafixModule {
     def utestVersion = "0.9.1"
     // moduleDir inherits the outer override, so sources resolve to test/src as-is.
 

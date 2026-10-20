@@ -1,0 +1,29 @@
+# Snapshot download settings. Loaded by Config.loadDownload; every key optional.
+#
+# Why one bulk aria2c invocation: BABEL snapshots are ~100 large files on a
+# plain HTTPS index (stars.renci.org). Throughput is capped per connection by
+# the server, so the only real lever is parallel range segments per file times
+# concurrent files. aria2c does both in ONE process with native resume; the
+# Rust "aria2 replacements" surveyed (aria2_rust, furl, FluxDown) are immature
+# or GUI/self-hosted, not drop-in CLI wins. Swap tools here, not in code.
+
+# aria2 (default) or jdk (pure-JVM fallback for boxes without aria2c).
+engine: aria2
+
+base_url: https://stars.renci.org/var/babel_outputs
+
+aria2:
+  binary: aria2c
+  # 16 is aria2's hard per-server maximum; more connections per file is the
+  # main throughput win against per-connection throttling.
+  connections_per_file: 16
+  split: 16
+  # Don't split small files into tiny segments (request overhead dominates).
+  min_split_size: 16M
+  # Concurrent files; with 16 connections each this is 128 sockets total.
+  concurrent_files: 8
+  # Passed through verbatim, e.g. ["--max-overall-download-limit=50M"].
+  extra_args: []
+
+# Concurrent files for the jdk engine (one connection per file).
+jdk_concurrency: 8

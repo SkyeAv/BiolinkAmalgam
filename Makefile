@@ -1,4 +1,4 @@
-.PHONY: setup build assembly test test-cluster bench run run-local fmt fmt-check check clean
+.PHONY: setup build assembly test test-cluster bench run run-local fmt fmt-check lint fix check clean
 
 # Resolve dependencies and compile everything in parallel.
 setup:
@@ -38,8 +38,19 @@ fmt:
 fmt-check:
 	./mill __.checkFormat
 
-# Full local quality gate.
-check: fmt-check test
+# Lint: scalafix rules (.scalafix.conf) in check mode, then format check.
+# Fails on any rule violation or unformatted file; changes nothing.
+lint:
+	./mill -j 0 __.fix --check
+	./mill __.checkFormat
+
+# Apply scalafix rewrites, then reformat.
+fix:
+	./mill -j 0 __.fix
+	./mill __.reformat
+
+# Full local quality gate: lint (scalafix + scalafmt) then the offline suite.
+check: lint test
 
 # Remove all build outputs.
 clean:
