@@ -156,6 +156,7 @@ class CustomTableSource(file: os.Path) extends SynonymSource(s"custom:${file.las
             n => length(n) > 0
           )
         ).as("names"),
+        array(col("curie")).as("identifiers"),
         lit(1).as("identifier_count")
       )
 }

@@ -22,9 +22,13 @@ object TestSupport {
   lazy val customDir: os.Path = resource("/custom")
   lazy val taxaConfig: os.Path = resource("/config/taxa.yaml")
   lazy val promoteConfig: os.Path = resource("/config/promote_prefixes.yaml")
+  lazy val filtersConfig: os.Path = resource("/config/filters.yaml")
 
-  lazy val majorTaxa: Set[String] = config.Config.loadTaxa(taxaConfig)
+  lazy val taxa: config.Config.TaxaConfig = config.Config.loadTaxa(taxaConfig)
+  lazy val majorTaxa: Set[String] = taxa.majorTaxa
+  lazy val taxonAllowlist: Set[String] = taxa.allowlist
   lazy val promotePrefixes: Set[String] = config.Config.loadPromotePrefixes(promoteConfig)
+  lazy val filters: config.Config.FilterConfig = config.Config.loadFilters(filtersConfig)
 
   /** Local, quiet, tiny-shuffle session for unit/integration suites. */
   lazy val spark: SparkSession = {

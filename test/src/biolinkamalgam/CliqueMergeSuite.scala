@@ -43,10 +43,15 @@ object CliqueMergeSuite extends TestSuite {
       )
     }
 
-    test("winner absorbs loser names, taxa, and identifier counts") {
+    test("winner absorbs loser names, taxa, and identifiers") {
       val winner = result.cliques.filter("leader = 'NCBIGene:9001'").head()
       assert(names(winner).contains("examplein"))
-      assert(winner.getAs[Int]("identifier_count") == 4) // 2 + 1 (HGNC) + 1 (CUSTOM:2)
+      // union of [NCBIGene:9001, ENSEMBL:ENSG00000999999] + [HGNC:9002] + [CUSTOM:2]
+      assert(winner.getAs[Int]("identifier_count") == 4)
+      assert(
+        winner.getAs[Seq[String]]("identifiers").toSet ==
+          Set("NCBIGene:9001", "ENSEMBL:ENSG00000999999", "HGNC:9002", "CUSTOM:2")
+      )
 
       val rarein = result.cliques.filter("leader = 'NCBIGene:9004'").head()
       assert(names(rarein).toSet == Set("rarein", "rarein alpha"))

@@ -75,6 +75,7 @@ object CliqueMerge {
         col("taxon_scope"),
         col("names").as("loser_names"),
         col("taxa").as("loser_taxa"),
+        col("identifiers").as("loser_identifiers"),
         col("identifier_count").as("loser_ids")
       )
     val pairs = loserCols.join(
@@ -117,7 +118,7 @@ object CliqueMerge {
       .agg(
         flatten(collect_list("loser_names")).as("absorbed_names"),
         flatten(collect_list("loser_taxa")).as("absorbed_taxa"),
-        sum("loser_ids").as("absorbed_ids")
+        flatten(collect_list("loser_identifiers")).as("absorbed_identifiers")
       )
 
     val allLosers = best.select(col("loser_leader").as("leader")).distinct()
@@ -135,12 +136,15 @@ object CliqueMerge {
         array_distinct(
           concat(col("names"), coalesce(col("absorbed_names"), array()))
         ).as("names"),
-        (col("identifier_count") + coalesce(col("absorbed_ids"), lit(0)))
-          .cast("int")
-          .as("identifier_count"),
+        array_distinct(
+          concat(col("identifiers"), coalesce(col("absorbed_identifiers"), array()))
+        ).as("identifiers"),
         col("source"),
         col("priority")
       )
+      // The count is derived from the unioned identifier list, never summed:
+      // loser and winner lists can overlap.
+      .withColumn("identifier_count", size(col("identifiers")))
 
     Result(surviving, merges)
   }

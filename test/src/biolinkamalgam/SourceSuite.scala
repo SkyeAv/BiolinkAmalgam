@@ -37,8 +37,9 @@ object SourceSuite extends TestSuite {
     }
 
     test("all fixture cliques load, one row per leader") {
-      assert(cliques.count() == 14)
-      assert(cliques.select("leader").distinct().count() == 14)
+      // 14 compendium cliques + 1 synonyms-only clique (UMLS:C7777777 gates fixture)
+      assert(cliques.count() == 15)
+      assert(cliques.select("leader").distinct().count() == 15)
     }
 
     test("verbatim BABEL G6PC1 compendium line parses") {
@@ -46,6 +47,10 @@ object SourceSuite extends TestSuite {
       assert(row.getAs[String]("preferred_name") == "G6PC1")
       assert(row.getAs[String]("category") == "biolink:Gene")
       assert(row.getAs[Int]("identifier_count") == 5)
+      // collect_list order is not guaranteed; compare as sets
+      assert(row.getAs[Seq[String]]("identifiers").toSet == Set(
+        "NCBIGene:2538", "ENSEMBL:ENSG00000131482", "HGNC:4056", "OMIM:613742", "UMLS:C1414892"
+      ))
       assert(row.getAs[Seq[String]]("taxa").toList == List("NCBITaxon:9606"))
       val ns = names(row)
       assert(ns.contains("G6PC1"))
@@ -92,6 +97,12 @@ object SourceSuite extends TestSuite {
       val row = byLeader("UMLS:C9999999")
       assert(row.getAs[String]("preferred_name") == null)
       assert(names(row) == List("nameless"))
+    }
+
+    test("synonyms-only cliques list just the leader as identifiers") {
+      val row = byLeader("UMLS:C7777777")
+      assert(row.getAs[Seq[String]]("identifiers").toList == List("UMLS:C7777777"))
+      assert(row.getAs[Int]("identifier_count") == 1)
     }
   }
 }

@@ -19,6 +19,7 @@ object ClusterSuite extends TestSuite {
     os.copy(TestSupport.customDir, staging / "custom")
     os.copy(TestSupport.taxaConfig, staging / "taxa.yaml")
     os.copy(TestSupport.promoteConfig, staging / "promote_prefixes.yaml")
+    os.copy(TestSupport.filtersConfig, staging / "filters.yaml")
     os.walk(staging).foreach(p => os.perms.set(p, if (os.isDir(p)) "rwxrwxrwx" else "rw-r--r--"))
     val out = staging / "out"
     os.makeDir.all(out)
@@ -60,12 +61,13 @@ object ClusterSuite extends TestSuite {
                 customDir = Some(custom),
                 outDir = out,
                 taxaConfig = staging / "taxa.yaml",
-                promoteConfig = staging / "promote_prefixes.yaml"
+                promoteConfig = staging / "promote_prefixes.yaml",
+                filtersConfig = staging / "filters.yaml"
               )
             )
-            assert(stages.find(_.name == "arbitrate").get.rows == 11)
+            assert(stages.find(_.name == "arbitrate").get.rows == 9)
             val back = spark.read.parquet((out / "biolinkamalgam.parquet").toString)
-            assert(back.count() == 11)
+            assert(back.count() == 9)
           } finally {
             spark.stop()
             os.remove.all(staging)

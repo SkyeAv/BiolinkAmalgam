@@ -1,0 +1,77 @@
+# Declarative pipeline filters. Big, reviewable decisions live here, not in code.
+# Every entry carries a why-comment. Loaded by Config.loadFilters; absent keys
+# mean "no filtering of that kind".
+
+# Categories dropped wholesale at ingest, before clique merging.
+drop_categories:
+  # Publication cliques are 15GB of PMID/doi/PMC rows whose "synonyms" are paper
+  # titles: messy, enormous, and useless for name resolution. BABEL publishes
+  # Publication.txt from 2023jul9 onward (prefixes exactly {PMID:, doi:, PMC:}).
+  - biolink:Publication
+  # There is NO Agent compendium in BABEL and no person/org registries (ROR,
+  # GRID, ORCID, ISNI, VIAF appear nowhere). biolink:Agent exists only as
+  # leftover-UMLS cliques (4461 in 2026jul22, every identifier UMLS:-prefixed,
+  # sampled names all organizations: "eli lilly", "Navrish Ltd", ...). With no
+  # institute-only prefixes to target and no persons to preserve, the only
+  # faithful institute filter is dropping the category.
+  - biolink:Agent
+
+# Per-category CURIE prefix drops: matching identifiers are removed from their
+# cliques; a clique left with zero identifiers is dropped entirely. Empty by
+# default (BABEL carries no ROR/GRID/ORCID today) — the mechanism exists for
+# future or custom sources that mix persons and institutes.
+drop_curie_prefixes_by_category: {}
+# Example for a source that does carry org registries:
+#   biolink:Agent: ["ROR:", "GRID:", "ISNI:"]
+
+# Substring bans on the cleaned (lowercase, pre-stem) name — fullmap token_qc
+# parity plus the language rule. Must run before stemming (Porter2 would mangle
+# the needles). Case-insensitive by construction (names are lowercased first).
+banned_substrings:
+  - uncharacterized # fullmap token_qc parity: uninformative protein names
+  - hypothetical    # fullmap token_qc parity: predicted-but-unnamed proteins
+  - language        # UMLS junk: "X language", "Y programming language" CURIEs
+
+# Exact-match drops on the cleaned lowercase term AND on its level-one key
+# (fullmap checks both). Baseline mirrors fullmap is_dead_term; the rest are
+# super-common English words that carry no biomedical meaning as entity names.
+dead_terms:
+  # --- fullmap is_dead_term baseline (verbatim, do not trim) ---
+  - none
+  - nan
+  - na
+  - null
+  - unknown
+  - not applicable
+  - p_value
+  - variable
+  - result
+  - exposure
+  - expression
+  - symbol
+  # --- medically meaningless common words (user-directed extension) ---
+  - the
+  - and
+  - for
+  - with
+  - other
+  - others
+  - general
+  - common
+  - type
+  - group
+  - classification
+  - category
+  - miscellaneous
+  - various
+
+# Regex bans on the cleaned lowercase term and its level-one key. Anchored;
+# must match the WHOLE term.
+exclude_name_regex:
+  # Numeric junk, not just integers: 0.5, 1.05, -3, 1e5 all acquire garbage
+  # UMLS CURIEs upstream. Extends fullmap's all-digits rule to any number.
+  - '^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$'
+
+# Regex bans on CURIEs (fullmap exclude_regex parity: any matching CURIE's
+# clique is dropped). Empty by default.
+exclude_curie_regex: []

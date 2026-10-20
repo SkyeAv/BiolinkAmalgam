@@ -59,9 +59,26 @@ object Schemas {
       StructField("category", StringType, nullable = false),
       StructField("taxa", ArrayType(StringType, containsNull = false), nullable = false),
       StructField("names", ArrayType(StringType, containsNull = false), nullable = false),
+      // Every identifier CURIE in the clique (leader first for compendia
+      // sources). Needed for prefix-scoped filtering; identifier_count is the
+      // authoritative count (BABEL synonyms rows carry clique_identifier_count
+      // even though they list only the leader).
+      StructField("identifiers", ArrayType(StringType, containsNull = false), nullable = false),
       StructField("identifier_count", IntegerType, nullable = false),
       StructField("source", StringType, nullable = false),
       StructField("priority", IntegerType, nullable = false)
+    )
+  )
+
+  /** One surviving synonym with its fullmap keys. NAME keeps the original string; L1 is the level-one (Porter2)
+    * key; L2 is the level-two ([a-z0-9_]-only) key, null when it equals L1 or fails the gates — the exact dedup the
+    * fullmap DB build applies at emit time, so the parquet converts into the DB with no re-normalization.
+    */
+  val synonymEntry: StructType = StructType(
+    Seq(
+      StructField("NAME", StringType, nullable = false),
+      StructField("L1", StringType, nullable = false),
+      StructField("L2", StringType, nullable = true)
     )
   )
 
@@ -70,8 +87,8 @@ object Schemas {
     Seq(
       StructField("CURIE", StringType, nullable = false),
       StructField("PREFERRED_NAME", StringType, nullable = true),
-      StructField("CATEGORY", StringType, nullable = false),
-      StructField("SYNONYMS", ArrayType(StringType, containsNull = false), nullable = false)
+      StructField("CLASS", StringType, nullable = false),
+      StructField("SYNONYMS", ArrayType(synonymEntry, containsNull = false), nullable = false)
     )
   )
 }

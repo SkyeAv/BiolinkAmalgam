@@ -51,6 +51,7 @@ object Registry {
           first("category", ignoreNulls = true).as("category"),
           array_distinct(flatten(collect_list("taxa"))).as("taxa"),
           array_distinct(flatten(collect_list("names"))).as("names"),
+          array_distinct(flatten(collect_list("identifiers"))).as("identifiers"),
           max("identifier_count").as("identifier_count"),
           concat_ws("+", collect_set("source")).as("source"),
           min("priority").as("priority")

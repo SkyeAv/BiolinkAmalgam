@@ -1,0 +1,1 @@
+{"type": "biolink:Agent", "identifiers": [{"i": "UMLS:C8888888", "l": "Navrish Ltd", "t": []}], "preferred_name": "Navrish Ltd", "taxa": []}

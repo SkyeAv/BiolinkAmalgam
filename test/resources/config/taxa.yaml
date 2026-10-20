@@ -1,4 +1,11 @@
-# Test copy of the repo's config/taxa.yaml — keep in sync.
+# Test copy of the repo's config/taxa.yaml — same keys, deliberately small
+# lists. major_taxa mirrors the first two prod entries; taxon_allowlist
+# exercises the fullmap-parity filter: fixture cliques whose only valid taxa
+# are NCBITaxon:1111111 / NCBITaxon:2222222 must be dropped by the full
+# pipeline (CliqueMerge/Uniqueness unit suites bypass ingest filters).
 major_taxa:
   - NCBITaxon:9606   # Homo sapiens
   - NCBITaxon:10090  # Mus musculus
+taxon_allowlist:
+  - NCBITaxon:9606
+  - NCBITaxon:10090

@@ -25,6 +25,7 @@ object Main {
       out: String,
       taxaConfig: String = "config/taxa.yaml",
       promoteConfig: String = "config/promote_prefixes.yaml",
+      filtersConfig: String = "config/filters.yaml",
       download: Option[String] = None,
       master: Option[String] = None,
       profile: Option[String] = None,
@@ -52,6 +53,7 @@ object Main {
           outDir = os.Path(out, os.pwd),
           taxaConfig = os.Path(taxaConfig, os.pwd),
           promoteConfig = os.Path(promoteConfig, os.pwd),
+          filtersConfig = os.Path(filtersConfig, os.pwd),
           simpleExport = simpleExport.value
         )
       )
@@ -74,6 +76,7 @@ object Main {
       out: String = "bench/history",
       taxaConfig: String = "config/taxa.yaml",
       promoteConfig: String = "config/promote_prefixes.yaml",
+      filtersConfig: String = "config/filters.yaml",
       master: Option[String] = None,
       profile: Option[String] = Some("local"),
       tag: String = ""
@@ -89,7 +92,8 @@ object Main {
             customDir = custom.map(d => os.Path(d, os.pwd)),
             outDir = tmpOut,
             taxaConfig = os.Path(taxaConfig, os.pwd),
-            promoteConfig = os.Path(promoteConfig, os.pwd)
+            promoteConfig = os.Path(promoteConfig, os.pwd),
+            filtersConfig = os.Path(filtersConfig, os.pwd)
           )
         )
         val ts = new java.text.SimpleDateFormat("yyyyMMdd-HHmmss").format(new java.util.Date())

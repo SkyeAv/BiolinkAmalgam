@@ -3,7 +3,7 @@ package biolinkamalgam
 import biolinkamalgam.config.Config
 import biolinkamalgam.export.{Manifest, Parquet, Tsv}
 import biolinkamalgam.source.Registry
-import biolinkamalgam.transform.{CliqueMerge, Uniqueness}
+import biolinkamalgam.transform.{CliqueMerge, Filters, Uniqueness}
 import java.util.concurrent.{Executors, TimeUnit}
 import org.apache.spark.sql.SparkSession
 
@@ -18,6 +18,7 @@ object Pipeline {
       outDir: os.Path,
       taxaConfig: os.Path,
       promoteConfig: os.Path,
+      filtersConfig: os.Path,
       simpleExport: Boolean = false
   )
 
@@ -31,26 +32,28 @@ object Pipeline {
       result
     }
 
-    val majorTaxa = Config.loadTaxa(opts.taxaConfig)
+    val taxa = Config.loadTaxa(opts.taxaConfig)
     val promotePrefixes = Config.loadPromotePrefixes(opts.promoteConfig)
+    val filters = Config.loadFilters(opts.filtersConfig)
 
-    // [1] INGEST — union all registered sources into the canonical clique table.
+    // [1] INGEST — union all registered sources into the canonical clique table,
+    // then apply declarative category/prefix/taxon-allowlist filters.
     val cliques = timed("ingest") {
       val sources = Registry.forConfig(opts.babelDir, opts.customDir, promotePrefixes)
-      val df = Registry.loadAll(spark, sources)
+      val df = Filters(Registry.loadAll(spark, sources), filters, taxa.allowlist)
       (df, df.count())
     }
 
     // [2] MERGE CLIQUES — preferred-name string matching, scoped by (category, taxon).
     val (merged, merges) = timed("merge") {
-      val result = CliqueMerge(cliques, majorTaxa)
+      val result = CliqueMerge(cliques, taxa.majorTaxa)
       result.cliques.persist(org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK)
       (result.cliques, result.merges) -> result.cliques.count()
     }
 
-    // [3]+[4] NORMALIZE (stemKey inside) + ARBITRATE — global synonym uniqueness.
+    // [3]+[4] NORMALIZE (gates + l1/l2 keys inside) + ARBITRATE — global synonym uniqueness.
     val (output, conflicts) = timed("arbitrate") {
-      val result = Uniqueness(merged, majorTaxa)
+      val result = Uniqueness(merged, taxa.majorTaxa, filters)
       result.output.persist(org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK)
       (result.output, result.conflicts) -> result.output.count()
     }

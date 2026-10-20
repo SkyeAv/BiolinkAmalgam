@@ -1,0 +1,1 @@
+{"type": "biolink:Publication", "identifiers": [{"i": "PMID:99999999", "l": "A study of examplein in mice", "t": []}], "preferred_name": "A study of examplein in mice", "taxa": []}

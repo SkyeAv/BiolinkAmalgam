@@ -11,3 +11,115 @@ major_taxa:
   - NCBITaxon:6239   # Caenorhabditis elegans — common in gene sources
   - NCBITaxon:4932   # Saccharomyces cerevisiae — common in gene sources
   - NCBITaxon:562    # Escherichia coli — common in protein sources
+
+# Taxon allowlist — Tablassert fullmap parity (rust/src/fullmap.rs
+# retain_for_taxon_allowlist): when non-empty, a clique whose valid taxa
+# (positive NCBITaxon ids; NCBITaxon:0 and malformed values are not valid)
+# are ALL outside this list is dropped at ingest. Taxonless cliques and
+# biolink:OrganismTaxon cliques are always kept. Empty list disables.
+#
+# Same top-100 list as Tablassert's data/experimental_taxa.yaml, which was
+# generated from in_taxon node frequencies in MultiomicsNext +
+# MultiomicsHarness (descending frequency, ascending id on ties). Kept as
+# NCBITaxon CURIEs to match BABEL row shapes.
+taxon_allowlist:
+  - NCBITaxon:9606    # rank 1, Homo sapiens
+  - NCBITaxon:10090   # rank 2, Mus musculus
+  - NCBITaxon:9913    # rank 3, Bos taurus
+  - NCBITaxon:559292  # rank 4, S. cerevisiae S288C
+  - NCBITaxon:3702    # rank 5, Arabidopsis thaliana
+  - NCBITaxon:185431  # rank 6
+  - NCBITaxon:69293   # rank 7
+  - NCBITaxon:7227    # rank 8, Drosophila melanogaster
+  - NCBITaxon:208964  # rank 9
+  - NCBITaxon:386585  # rank 10
+  - NCBITaxon:1069680
+  - NCBITaxon:4896
+  - NCBITaxon:1186058
+  - NCBITaxon:8030
+  - NCBITaxon:77519
+  - NCBITaxon:1094350
+  - NCBITaxon:8260
+  - NCBITaxon:76775
+  - NCBITaxon:1567544
+  - NCBITaxon:296543
+  - NCBITaxon:1518534
+  - NCBITaxon:8078
+  - NCBITaxon:375899
+  - NCBITaxon:68895
+  - NCBITaxon:2492962
+  - NCBITaxon:69
+  - NCBITaxon:333
+  - NCBITaxon:6239    # Caenorhabditis elegans
+  - NCBITaxon:62977
+  - NCBITaxon:69222
+  - NCBITaxon:114398
+  - NCBITaxon:168475
+  - NCBITaxon:198618
+  - NCBITaxon:1144522
+  - NCBITaxon:1194168
+  - NCBITaxon:1211579
+  - NCBITaxon:1337664
+  - NCBITaxon:3240790
+  - NCBITaxon:292
+  - NCBITaxon:675
+  - NCBITaxon:680
+  - NCBITaxon:964
+  - NCBITaxon:1019
+  - NCBITaxon:7091
+  - NCBITaxon:7092
+  - NCBITaxon:7113
+  - NCBITaxon:7130
+  - NCBITaxon:7137
+  - NCBITaxon:7141
+  - NCBITaxon:7213
+  - NCBITaxon:8022
+  - NCBITaxon:13037
+  - NCBITaxon:13191
+  - NCBITaxon:29058
+  - NCBITaxon:33412
+  - NCBITaxon:42275
+  - NCBITaxon:42288
+  - NCBITaxon:42677
+  - NCBITaxon:47958
+  - NCBITaxon:61647
+  - NCBITaxon:66420
+  - NCBITaxon:72036
+  - NCBITaxon:72248
+  - NCBITaxon:76193
+  - NCBITaxon:76194
+  - NCBITaxon:91739
+  - NCBITaxon:93504
+  - NCBITaxon:110368
+  - NCBITaxon:113334
+  - NCBITaxon:116150
+  - NCBITaxon:129554
+  - NCBITaxon:132476
+  - NCBITaxon:165597
+  - NCBITaxon:171585
+  - NCBITaxon:171605
+  - NCBITaxon:179879
+  - NCBITaxon:189913
+  - NCBITaxon:191418
+  - NCBITaxon:195709
+  - NCBITaxon:312309
+  - NCBITaxon:321846
+  - NCBITaxon:334116
+  - NCBITaxon:335848
+  - NCBITaxon:335849
+  - NCBITaxon:339670
+  - NCBITaxon:359387
+  - NCBITaxon:395600
+  - NCBITaxon:442694
+  - NCBITaxon:452646
+  - NCBITaxon:483199
+  - NCBITaxon:487832
+  - NCBITaxon:488447
+  - NCBITaxon:488729
+  - NCBITaxon:488731
+  - NCBITaxon:488732
+  - NCBITaxon:520877
+  - NCBITaxon:611301
+  - NCBITaxon:666685
+  - NCBITaxon:680683
+  - NCBITaxon:1074311

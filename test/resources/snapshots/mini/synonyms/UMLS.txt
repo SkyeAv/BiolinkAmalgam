@@ -1,0 +1,1 @@
+{"curie": "UMLS:C7777777", "names": ["0.5", "English language", "unknown", "hypothetical protein XP123", "genuine synonym"], "types": ["biolink:Gene"], "preferred_name": "genuine", "taxa": ["NCBITaxon:9606"], "clique_identifier_count": 1}
