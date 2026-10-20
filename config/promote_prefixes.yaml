@@ -1,5 +1,5 @@
 # CURIE prefixes whose identifier strings are promoted to synonyms of their clique.
-# Tablassert's fullmap never indexed InChIKeys; Amalgam does, so chemical lookups
+# Tablassert's fullmap never indexed InChIKeys; BiolinkAmalgam does, so chemical lookups
 # by InChIKey resolve. Add prefixes here to promote more identifier kinds.
 promote_prefixes:
   - INCHIKEY

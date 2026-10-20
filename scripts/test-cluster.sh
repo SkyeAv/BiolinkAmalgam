@@ -59,4 +59,4 @@ fi
 ./mill cluster.assembly
 ASSEMBLY_JAR="$(pwd)/out/cluster/assembly.dest/out.jar"
 
-AMALGAM_SPARK_MASTER="$MASTER" AMALGAM_CLUSTER_JAR="$ASSEMBLY_JAR" ./mill -j 0 amalgam.test
+BIOLINKAMALGAM_SPARK_MASTER="$MASTER" BIOLINKAMALGAM_CLUSTER_JAR="$ASSEMBLY_JAR" ./mill -j 0 biolinkamalgam.test

@@ -6,7 +6,7 @@ setup:
 
 # Build the local jar (Spark bundled) for `java -jar` / local[*] runs.
 build:
-	./mill amalgam.assembly
+	./mill biolinkamalgam.assembly
 
 # Build the cluster jar (Spark provided) for spark-submit.
 assembly:
@@ -15,7 +15,7 @@ assembly:
 # Run the test suite in parallel. Offline by construction: FixtureSnapshotProvider
 # throws on any non-local path, so no test can download anything.
 test:
-	./mill -j 0 amalgam.test
+	./mill -j 0 biolinkamalgam.test
 
 # Start the local Spark master+worker, wait for registration, run ClusterSuite
 # against spark://127.0.0.1:7077, then stop what we started (trap-guarded).
@@ -24,11 +24,11 @@ test-cluster:
 
 # Run the benchmark harness on the fixed small slice.
 bench:
-	./mill amalgam.run bench --out bench/history
+	./mill biolinkamalgam.run bench --out bench/history
 
 # Run the pipeline locally: make run ARGS="run --babel <dir> --out out/"
 run:
-	./mill amalgam.run $(ARGS)
+	./mill biolinkamalgam.run $(ARGS)
 
 # Format all Scala sources.
 fmt:

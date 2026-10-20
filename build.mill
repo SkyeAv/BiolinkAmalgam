@@ -1,6 +1,6 @@
-// Amalgam build — Scala 2.13.16 + Spark 4.0.1 (matches the system Spark on PATH).
+// BiolinkAmalgam build — Scala 2.13.16 + Spark 4.0.1 (matches the system Spark on PATH).
 // Two modules, one codebase:
-//   ./mill amalgam.assembly  → local jar, Spark bundled (`java -jar` / `local[*]` runs)
+//   ./mill biolinkamalgam.assembly  → local jar, Spark bundled (`java -jar` / `local[*]` runs)
 //   ./mill cluster.assembly  → cluster jar, Spark compile-only (`spark-submit` provides it)
 package build
 
@@ -8,7 +8,7 @@ import mill._
 import scalalib._
 import scalalib.scalafmt.ScalafmtModule
 
-trait AmalgamModule extends ScalaModule with ScalafmtModule {
+trait BiolinkAmalgamModule extends ScalaModule with ScalafmtModule {
 
   def scalaVersion = "2.13.16"
 
@@ -24,12 +24,12 @@ trait AmalgamModule extends ScalaModule with ScalafmtModule {
     mvn"org.yaml:snakeyaml:2.4"
   )
 
-  def mainClass = Some("amalgam.Main")
+  def mainClass = Some("biolinkamalgam.Main")
 
   def scalacOptions = Seq("-deprecation", "-feature")
 }
 
-object amalgam extends AmalgamModule {
+object biolinkamalgam extends BiolinkAmalgamModule {
   def mvnDeps = commonDeps ++ sparkDeps
 
   object test extends ScalaTests with TestModule.Utest with ScalafmtModule {
@@ -37,7 +37,7 @@ object amalgam extends AmalgamModule {
     // moduleDir inherits the outer override, so sources resolve to test/src as-is.
 
     // Tests are offline by construction: FixtureSnapshotProvider throws on non-local
-    // paths. AMALGAM_SPARK_MASTER is intentionally unset here — ClusterSuite only runs
+    // paths. BIOLINKAMALGAM_SPARK_MASTER is intentionally unset here — ClusterSuite only runs
     // via `make test-cluster`, which sets it.
     def forkEnv = Map("SPARK_LOCAL_IP" -> "127.0.0.1")
 
@@ -46,7 +46,7 @@ object amalgam extends AmalgamModule {
   }
 }
 
-object cluster extends AmalgamModule {
+object cluster extends BiolinkAmalgamModule {
   def mvnDeps = commonDeps
 
   // Compile-only ("provided"): present on the compile classpath, excluded from
