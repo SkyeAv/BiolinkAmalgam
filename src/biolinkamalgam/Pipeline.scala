@@ -1,7 +1,7 @@
 package biolinkamalgam
 
 import biolinkamalgam.config.Config
-import biolinkamalgam.export.{Manifest, Parquet, Tsv}
+import biolinkamalgam.export.{DatasetCard, Manifest, Parquet, Tsv}
 import biolinkamalgam.source.Registry
 import biolinkamalgam.transform.{CliqueMerge, Filters, Uniqueness}
 import java.util.concurrent.{Executors, TimeUnit}
@@ -19,7 +19,8 @@ object Pipeline {
       taxaConfig: os.Path,
       promoteConfig: os.Path,
       filtersConfig: os.Path,
-      simpleExport: Boolean = false
+      simpleExport: Boolean = false,
+      datasetMeta: Map[String, String] = Map.empty
   )
 
   def run(spark: SparkSession, opts: Options): Seq[Manifest.Stage] = {
@@ -69,6 +70,7 @@ object Pipeline {
         parquetFut.get()
         conflictsFut.get()
         mergesFut.get()
+        DatasetCard.write(opts.outDir, "biolinkamalgam.parquet", stages.toSeq, opts.datasetMeta)
         () -> output.count()
       } finally {
         pool.shutdown()

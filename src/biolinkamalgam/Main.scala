@@ -54,7 +54,11 @@ object Main {
           taxaConfig = os.Path(taxaConfig, os.pwd),
           promoteConfig = os.Path(promoteConfig, os.pwd),
           filtersConfig = os.Path(filtersConfig, os.pwd),
-          simpleExport = simpleExport.value
+          simpleExport = simpleExport.value,
+          datasetMeta = Map(
+            "babel" -> download.getOrElse(babel.map(d => s"local:$d").getOrElse("none")),
+            "custom" -> custom.getOrElse("none")
+          )
         )
       )
       Manifest.write(

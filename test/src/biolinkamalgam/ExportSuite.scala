@@ -1,6 +1,6 @@
 package biolinkamalgam
 
-import biolinkamalgam.export.{Parquet, Tsv}
+import biolinkamalgam.export.{DatasetCard, Manifest, Parquet, Tsv}
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.functions._
 import utest._
@@ -59,6 +59,27 @@ object ExportSuite extends TestSuite {
 
       val back = spark.read.parquet(dest.toString)
       assert(back.count() == 25)
+    }
+
+    test("dataset card renders frontmatter, schema, and run stats that match the run") {
+      val card = DatasetCard.render(
+        "biolinkamalgam.parquet",
+        Seq(Manifest.Stage("ingest", 15, 100), Manifest.Stage("arbitrate", 9, 50)),
+        Map("babel" -> "test-snapshot"),
+        "2026-01-01"
+      )
+      assert(card.startsWith("---\n"))
+      assert(card.contains("size_categories:\n  - n<1K"))
+      assert(card.contains("test-snapshot"))
+      assert(card.contains("SYNONYMS[].L2"))
+      assert(card.contains("Generated 2026-01-01"))
+      assert(!card.contains("null"))
+
+      assert(DatasetCard.sizeCategory(0) == "n<1K")
+      assert(DatasetCard.sizeCategory(999) == "n<1K")
+      assert(DatasetCard.sizeCategory(1500) == "1K<n<10K")
+      assert(DatasetCard.sizeCategory(5000000) == "1M<n<10M")
+      assert(DatasetCard.sizeCategory(500000000) == "100M<n<1B")
     }
 
     test("TSV concat writes the header exactly once across part files") {
