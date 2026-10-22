@@ -54,5 +54,41 @@ object PipelineSuite extends TestSuite {
       val merges = os.read.lines(out / "merges.tsv")
       assert(merges.length == 3) // header + 2 merges
     }
+
+    test("ingest cache: second run reuses materialized cliques with identical output") {
+      val out = os.temp.dir(prefix = "biolinkamalgam-cache-test")
+      val cache = out / "ingest-cache"
+      def opts = Pipeline.Options(
+        babelDir = Some(TestSupport.miniSnapshot),
+        customDir = Some(TestSupport.customDir),
+        outDir = out,
+        taxaConfig = TestSupport.taxaConfig,
+        promoteConfig = TestSupport.promoteConfig,
+        filtersConfig = TestSupport.filtersConfig,
+        ingestCache = Some(cache)
+      )
+      Pipeline.run(spark, opts)
+      val first = spark.read.parquet((out / "biolinkamalgam.parquet").toString).orderBy("CURIE").collect().toSeq
+      assert(os.exists(cache / "_fingerprint"))
+
+      os.remove(out / "biolinkamalgam.parquet")
+      Pipeline.run(spark, opts) // cache hit path
+      val second = spark.read.parquet((out / "biolinkamalgam.parquet").toString).orderBy("CURIE").collect().toSeq
+      assert(first.map(_.toString) == second.map(_.toString))
+
+      // changing an ingest-affecting config (taxon allowlist) must invalidate
+      val staging = out / "alt-config"
+      os.makeDir.all(staging)
+      os.write.over(
+        staging / "taxa.yaml",
+        os.read(TestSupport.taxaConfig).replace("  - NCBITaxon:10090\n", "")
+      )
+      Pipeline.run(
+        spark,
+        opts.copy(taxaConfig = staging / "taxa.yaml", outDir = out / "alt-out")
+      )
+      val altRows = spark.read.parquet((out / "alt-out" / "biolinkamalgam.parquet").toString).count()
+      assert(altRows == 12) // the mouse-only NCBIGene:9003 clique now fails the allowlist
+    }
   }
 }
