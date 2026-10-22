@@ -1,4 +1,4 @@
-.PHONY: setup build assembly test test-cluster bench run run-local fmt fmt-check lint fix check clean
+.PHONY: setup build assembly test test-cluster bench run run-local fmt fmt-check lint fix check publish clean
 
 # Resolve dependencies and compile everything in parallel.
 setup:
@@ -51,6 +51,11 @@ fix:
 
 # Full local quality gate: lint (scalafix + scalafmt) then the offline suite.
 check: lint test
+
+# Publish a finished run to the public HF dataset (token from $HF_TOKEN):
+#   make publish OUT=out/fullrun-2026jul22
+publish:
+	./scripts/publish-hf.sh $(OUT)
 
 # Remove all build outputs.
 clean:
