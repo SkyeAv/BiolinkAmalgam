@@ -164,5 +164,67 @@ object Main {
     }
   }
 
+  /** Pre-publication sanity checks on a finished run: schema, class drops, the uniqueness invariant, and the gates. */
+  @main def validate(
+      out: String,
+      master: Option[String] = None,
+      profile: Option[String] = None
+  ): Unit = {
+    val (resolvedMaster, conf) = sparkSettings(profile, master)
+    val spark = SparkSupport.session("biolinkamalgam-validate", resolvedMaster.orElse(Some("local[*]")), conf)
+    import spark.implicits._
+    import org.apache.spark.sql.functions.{col, explode, lower}
+    var failed = false
+    def check(label: String, ok: Boolean, detail: String = ""): Unit = {
+      println(s"${if (ok) "ok  " else "FAIL"}  $label%-48s $detail")
+      if (!ok) failed = true
+    }
+    try {
+      val dir = os.Path(out, os.pwd)
+      val df = spark.read.parquet((dir / "biolinkamalgam.parquet").toString)
+
+      check(
+        "schema == CURIE,PREFERRED_NAME,CLASS,SYNONYMS",
+        df.schema.fieldNames.mkString(",") == "CURIE,PREFERRED_NAME,CLASS,SYNONYMS",
+        df.schema.fieldNames.mkString(",")
+      )
+      val rows = df.count()
+      check("row count > 0", rows > 0, s"rows=$rows")
+      check("CURIEs unique", rows - df.select("CURIE").distinct().count() == 0)
+
+      val exploded = df.select("CLASS", explode(col("SYNONYMS")).as("s"))
+      check(
+        "one-CURIE-per-(class, synonym)",
+        exploded.groupBy("CLASS", "s").count().filter(col("count") > 1).count() == 0
+      )
+      check(
+        "Publication/Agent absent",
+        df.filter(col("CLASS").isin("biolink:Publication", "biolink:Agent")).count() == 0
+      )
+      check(
+        "no numeric-only synonyms",
+        exploded.filter("s rlike '^[+-]?([0-9]+\\.?[0-9]*|\\.[0-9]+)([eE][+-]?[0-9]+)?$$'").count() == 0
+      )
+      check("no 'language' synonyms", exploded.filter("lower(s) like '%language%'").count() == 0)
+      check(
+        "no dead-term synonyms",
+        exploded.filter(lower(col("s")).isin("unknown", "none", "null", "the", "and", "expression", "symbol"))
+          .count() == 0
+      )
+
+      println("
+top classes:")
+      df.groupBy("CLASS").count().orderBy($"count".desc).show(15, false)
+      println(s"synonyms seen under more than one CLASS (legal across classes): " +
+        exploded.groupBy("s").count().filter(col("count") > 1).count())
+
+      if (failed) {
+        println("VALIDATION FAILED")
+        sys.exit(1)
+      }
+      println("VALIDATION PASSED")
+    } finally spark.stop()
+  }
+
   def main(args: Array[String]): Unit = mainargs.ParserForMethods(this).runOrExit(args)
 }
