@@ -38,6 +38,10 @@ trait BiolinkAmalgamModule extends ScalaModule with ScalafmtModule with Scalafix
 object biolinkamalgam extends BiolinkAmalgamModule {
   def mvnDeps = commonDeps ++ sparkDeps
 
+  // The Spark-bundled assembly exceeds 65535 zip entries; the prepended shell
+  // script breaks jars that size (java -jar is the only entry path we use).
+  def prependShellScript = ""
+
   object test extends ScalaTests with TestModule.Utest with ScalafmtModule with ScalafixModule {
     def utestVersion = "0.9.1"
     // moduleDir inherits the outer override, so sources resolve to test/src as-is.
