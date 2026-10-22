@@ -84,6 +84,15 @@ class Aria2BulkDownloader(cfg: Aria2Config) extends BulkDownloader {
       "--continue=true",
       "--file-allocation=none",
       "--auto-file-renaming=false",
+      // Transient resilience: stars.renci.org intermittently answers 5xx during
+      // multi-hour pulls, which aria2 classifies as file-not-found; the default
+      // max-file-not-found=0 aborts the WHOLE run on a single blip (observed
+      // 2026-10-22 at ~100GB: exit 29). Retry per file instead.
+      "--max-file-not-found=20",
+      "--max-tries=10",
+      "--retry-wait=5",
+      "--timeout=120",
+      "--connect-timeout=30",
       "--console-log-level=warn",
       "--summary-interval=30"
     ) ++ cfg.extraArgs
