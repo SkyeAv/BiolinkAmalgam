@@ -3,9 +3,12 @@
 # Why one bulk aria2c invocation: BABEL snapshots are ~100 large files on a
 # plain HTTPS index (stars.renci.org). Throughput is capped per connection by
 # the server, so the only real lever is parallel range segments per file times
-# concurrent files. aria2c does both in ONE process with native resume; the
-# Rust "aria2 replacements" surveyed (aria2_rust, furl, FluxDown) are immature
-# or GUI/self-hosted, not drop-in CLI wins. Swap tools here, not in code.
+# concurrent files. aria2c does both in ONE process with native resume.
+#
+# Benchmark (2026-10-22, wenceslaus, 2.39GB compendia/Gene.txt.00, 16
+# connections): aria2 42.6 MB/s, jdk-chunked 13.4 MB/s — aria2 is 3.2x faster,
+# so it is the default and jdk-chunked exists only as the no-aria2 fallback
+# path. Re-measure with `benchDownload` before changing the default.
 
 # aria2 (default) or jdk (pure-JVM fallback for boxes without aria2c).
 engine: aria2
