@@ -6,7 +6,7 @@
 # concurrent files. aria2c does both in ONE process with native resume.
 #
 # Benchmark (2026-10-22, wenceslaus, 2.39GB compendia/Gene.txt.00, 16
-# connections): aria2 42.6 MB/s, jdk-chunked 13.4 MB/s — aria2 is 3.2x faster,
+# connections): aria2 42.6 MB/s, jdk 21.4 MB/s, jdk-chunked 13.4 MB/s — aria2 is
 # so it is the default and jdk-chunked exists only as the no-aria2 fallback
 # path. Re-measure with `benchDownload` before changing the default.
 
