@@ -37,9 +37,10 @@ object SourceSuite extends TestSuite {
     }
 
     test("all fixture cliques load, one row per leader") {
-      // 14 compendium cliques + 1 synonyms-only clique (UMLS:C7777777 gates fixture)
-      assert(cliques.count() == 15)
-      assert(cliques.select("leader").distinct().count() == 15)
+      // 14 original fixture cliques + Publication + Agent compendia + 1 synonyms-only clique
+      // (UMLS:C7777777 gates fixture) + 2 manual NDJSON entries
+      assert(cliques.count() == 19)
+      assert(cliques.select("leader").distinct().count() == 19)
     }
 
     test("verbatim BABEL G6PC1 compendium line parses") {
@@ -48,9 +49,15 @@ object SourceSuite extends TestSuite {
       assert(row.getAs[String]("category") == "biolink:Gene")
       assert(row.getAs[Int]("identifier_count") == 5)
       // collect_list order is not guaranteed; compare as sets
-      assert(row.getAs[Seq[String]]("identifiers").toSet == Set(
-        "NCBIGene:2538", "ENSEMBL:ENSG00000131482", "HGNC:4056", "OMIM:613742", "UMLS:C1414892"
-      ))
+      assert(
+        row.getAs[Seq[String]]("identifiers").toSet == Set(
+          "NCBIGene:2538",
+          "ENSEMBL:ENSG00000131482",
+          "HGNC:4056",
+          "OMIM:613742",
+          "UMLS:C1414892"
+        )
+      )
       assert(row.getAs[Seq[String]]("taxa").toList == List("NCBITaxon:9606"))
       val ns = names(row)
       assert(ns.contains("G6PC1"))
@@ -103,6 +110,19 @@ object SourceSuite extends TestSuite {
       val row = byLeader("UMLS:C7777777")
       assert(row.getAs[Seq[String]]("identifiers").toList == List("UMLS:C7777777"))
       assert(row.getAs[Int]("identifier_count") == 1)
+    }
+
+    test("manual NDJSON entries: priority 0, equivalents fold into identifiers") {
+      val row = byLeader("MANUAL:0000001")
+      assert(row.getAs[Int]("priority") == 0)
+      assert(row.getAs[String]("preferred_name") == "manualin")
+      assert(row.getAs[Seq[String]]("identifiers").toSet == Set("MANUAL:0000001", "MANUAL:0000002"))
+      assert(row.getAs[Int]("identifier_count") == 2)
+      assert(names(row) == List("manualin", "manualin alpha"))
+      // EUPATH singleton: alternatives + preferred as names, taxonless
+      val eu = byLeader("EUPATH:0009259")
+      assert(names(eu).length == 3)
+      assert(eu.getAs[Seq[String]]("taxa").isEmpty)
     }
   }
 }

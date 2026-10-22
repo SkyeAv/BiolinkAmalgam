@@ -17,18 +17,7 @@ object ExportSuite extends TestSuite {
         concat(lit("CURIE:"), col("id")).as("CURIE"),
         lit("some name").as("PREFERRED_NAME"),
         lit("biolink:Gene").as("CLASS"),
-        array(
-          struct(
-            lit("syn1").as("NAME"),
-            lit("syn1").as("L1"),
-            lit(null).cast("string").as("L2")
-          ),
-          struct(
-            lit("syn two").as("NAME"),
-            lit("syn two").as("L1"),
-            lit("syntwo").as("L2")
-          )
-        ).as("SYNONYMS")
+        array(lit("syn1"), lit("syn2")).as("SYNONYMS")
       )
       .repartition(4)
 
@@ -45,11 +34,7 @@ object ExportSuite extends TestSuite {
       assert(back.count() == 100)
       assert(back.schema.fieldNames.toSeq == Seq("CURIE", "PREFERRED_NAME", "CLASS", "SYNONYMS"))
       assert(back.select("CURIE").distinct().count() == 100)
-      // the struct-typed synonym entries round-trip through the binary concat
-      val entry = back.head().getAs[Seq[Row]]("SYNONYMS").head
-      assert(entry.getAs[String]("NAME") == "syn1")
-      assert(entry.getAs[String]("L1") == "syn1")
-      assert(entry.getAs[String]("L2") == null)
+      assert(back.head().getAs[scala.collection.Seq[String]]("SYNONYMS").toSeq == Seq("syn1", "syn2"))
     }
 
     test("single-file parquet: simple coalesce(1) fallback path") {
@@ -71,7 +56,7 @@ object ExportSuite extends TestSuite {
       assert(card.startsWith("---\n"))
       assert(card.contains("size_categories:\n  - n<1K"))
       assert(card.contains("test-snapshot"))
-      assert(card.contains("SYNONYMS[].L2"))
+      assert(card.contains("`SYNONYMS` | list<string>"))
       assert(card.contains("Generated 2026-01-01"))
       assert(!card.contains("null"))
 

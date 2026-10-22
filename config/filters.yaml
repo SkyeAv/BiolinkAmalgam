@@ -40,7 +40,7 @@ dead_terms:
   - none
   - nan
   - na
-  - null
+  - "null"
   - unknown
   - not applicable
   - p_value

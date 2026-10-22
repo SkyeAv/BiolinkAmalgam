@@ -1,67 +1,90 @@
-# Amalgam
+# BiolinkAmalgam
 
-A Spark/Scala pipeline that turns BABEL outputs (plus your own ontology tables) into a
-**single parquet file** for fullmap-DB ingestion, with one hard invariant:
+A Spark/Scala pipeline that turns BABEL outputs (plus your own ontology tables and
+hand-curated manual entries) into a **single parquet file** publishable as a Hugging
+Face dataset (`SkyeAv/babel-amalgam`), with one hard invariant:
 
-> Within a given **category × taxon scope**, a synonym belongs to exactly **one** CURIE.
+> Within a given **class × taxon scope**, a synonym belongs to exactly **one** CURIE.
+
+The dataset ships **original strings** with junk filtered out. There is **no stemmer in
+this codebase**: normalization (Porter2, level-one/level-two keys) is owned downstream by
+Tablassert's fullmap. One NLP pipeline, one language — never two.
 
 ## Layout
 
-- `src/amalgam/schema/Schemas.scala` — explicit StructTypes for every file shape read or
-  written. Never use Spark schema inference.
-- `src/amalgam/config/Config.scala` — loads `config/*.yaml` (major taxa, promoted CURIE
-  prefixes, resource profiles) and owns taxon bucketing.
-- `src/amalgam/ingest/SnapshotProvider.scala` — the download seam. `RemoteSnapshotProvider`
-  (async JDK HttpClient, Range resume, atomic rename) vs `FixtureSnapshotProvider`.
-- `src/amalgam/source/` — `SynonymSource` plugin base, BABEL compendia/synonyms readers,
-  custom TSV/JSONL ontologies, and `Registry` (lists sources, unions + consolidates by
-  clique leader).
-- `src/amalgam/transform/` — `NameKey` (match keys), `CliqueMerge` (preferred-name clique
-  merging), `Uniqueness` (synonym arbitration).
-- `src/amalgam/export/` — `Parquet` (single-file binary concat), `Tsv` (header-aware
-  concat), `Manifest` (run metrics).
-- `src/amalgam/Pipeline.scala` + `Main.scala` — stage orchestration + mainargs CLI
-  (`run`, `bench`).
-- `config/` — `taxa.yaml`, `promote_prefixes.yaml`, `profiles.yaml`. Big, reviewable
-  decisions live here, not in code. Every entry carries a why-comment.
-- `test/` — utest suites + fixture snapshot (`test/resources/snapshots/mini`) and custom
-  ontology (`test/resources/custom/mini.tsv`).
+- `src/biolinkamalgam/schema/Schemas.scala` — explicit StructTypes for every file shape
+  read or written. Never use Spark schema inference.
+- `src/biolinkamalgam/config/Config.scala` — loads `config/*.yaml` (taxa, filters,
+  promoted prefixes, download, profiles) and owns taxon bucketing.
+- `src/biolinkamalgam/ingest/` — `SnapshotProvider` (remote listing vs fixtures),
+  `SnapshotFiles` (split-parts XOR whole-file selection, aria2 leftover exclusion),
+  `BulkDownloader` (`aria2` default / `jdk-chunked` / `jdk`; one bulk invocation for the
+  whole snapshot, HEAD-based skip of completed files).
+- `src/biolinkamalgam/source/` — `SynonymSource` plugin base, BABEL compendia/synonyms
+  readers, custom TSV/JSONL ontologies, manual `.ndjson` entries (BABEL PR #887 shape,
+  priority 0 = overrides), and `Registry` (lists sources, unions + consolidates by clique
+  leader; lowest-priority non-null preferred name wins).
+- `src/biolinkamalgam/transform/` — `NameKey` (strip/clean only — no stemming),
+  `TermGates` (junk admission gates from filters.yaml), `Filters` (category/prefix/taxon
+  drops), `CliqueMerge` (preferred-name clique merging), `Uniqueness` (arbitration).
+- `src/biolinkamalgam/export/` — `Parquet` (single-file binary concat), `Tsv`
+  (header-aware concat), `Manifest` (run metrics), `DatasetCard` (HF README.md with
+  YAML frontmatter, generated per run).
+- `src/biolinkamalgam/Pipeline.scala` + `Main.scala` — stage orchestration + mainargs
+  CLI (`run`, `bench`, `benchDownload`).
+- `config/` — `taxa.yaml`, `filters.yaml`, `promote_prefixes.yaml`, `download.yaml`,
+  `profiles.yaml`. Big, reviewable decisions live here, not in code. Every entry carries
+  a why-comment. **YAML gotcha: quote bare `null`/`true`/`false` scalars in lists** (a
+  plain `- null` parses to a null element, not the string).
+- `test/` — utest suites + fixture snapshot (`test/resources/snapshots/mini`), custom
+  ontology (`test/resources/custom/mini.tsv`), manual entries (`manual.ndjson`).
 
 ## The canonical output
 
-One file, `amalgam.parquet`, schema exactly:
+One file, `biolinkamalgam.parquet`, schema exactly:
 
 ```
-CURIE: string, PREFERRED_NAME: string, CATEGORY: string, SYNONYMS: array<string>
+CURIE: string, PREFERRED_NAME: string, CLASS: string, SYNONYMS: array<string>
 ```
 
-One row per surviving clique leader. A clique whose names all lost arbitration still
-gets a row with empty SYNONYMS. Audit reports `conflicts.tsv` and `merges.tsv` sit
-beside it, plus `run_manifest.json`.
+One row per surviving clique leader. A clique whose names all lost arbitration (or failed
+the gates) still gets a row with empty SYNONYMS. Beside it: `conflicts.tsv`, `merges.tsv`,
+`run_manifest.json`, and a generated `README.md` HF dataset card.
 
 ## Invariants and rules (do not break)
 
 - **No conflation, ever.** `synonyms-conflated/` and `*Conflated*` files are excluded in
   both the remote listing and the synonym reader. Drug/chemical and gene/protein cliques
   stay distinct (unlike Tablassert's fullmap).
-- **Taxon bucketing.** Only taxa in `config/taxa.yaml` get their own scope; the long tail
-  shares `__OTHER_TAXA__`, no-taxon cliques share `__NO_TAXON__`. Clique merging and
-  arbitration are scoped by (category, taxon bucket) — the same name MAY recur across
-  categories or taxa.
-- **Preferred names are never stemmed** — clique merge matches on strip-only keys (trim,
-  lowercase, drop non-word chars, collapse whitespace). Synonym arbitration stems
-  (Snowball Porter via lucene-analysis-common — Lucene's own `PorterStemmer` is
-  package-private, don't try to import it). Output SYNONYMS always keep ORIGINAL strings.
-- **Winner order** (merge and arbitration): most synonyms → identifier count → source
-  priority (lower wins; custom ontologies are 0, BABEL 10) → smallest CURIE. Total order,
-  so reruns reproduce.
+- **Taxon bucketing.** Only taxa in `config/taxa.yaml` `major_taxa` get their own scope;
+  the long tail shares `__OTHER_TAXA__`, no-taxon cliques share `__NO_TAXON__`. The same
+  name MAY recur across categories or taxa.
+- **Taxon allowlist** (`taxa.yaml` `taxon_allowlist`, Tablassert fullmap
+  `retain_for_taxon_allowlist` parity): when non-empty, cliques whose valid taxa
+  (positive NCBITaxon ids) are all outside the list are dropped at ingest; taxonless and
+  biolink:OrganismTaxon cliques are always kept.
+- **No stemming.** Merge and arbitration keys are strip-only (trim, lowercase, drop
+  non-word chars, collapse whitespace). Inflections ("glucose"/"glucoses") stay distinct.
+  Output SYNONYMS always keep ORIGINAL strings.
+- **Junk gates are filters, not NLP** (`TermGates` on the quote-stripped lowercase
+  cleaned form): banned substrings (`language`, `uncharacterized`, `hypothetical`),
+  exact-match dead terms, numeric junk incl. decimals (`0.5`, `1.05` — these acquire
+  garbage UMLS CURIEs upstream). All lists live in `config/filters.yaml`.
+- **Winner order** (merge and arbitration): preferred-name match → most synonyms →
+  identifier count → source priority (lower wins; manual/custom 0, BABEL 10) → smallest
+  CURIE. Total order, so reruns reproduce.
 - **INCHIKEY promotion**: identifier CURIEs whose prefix is in
   `config/promote_prefixes.yaml` become synonyms of their clique (fullmap never did this).
+- **Dropped by default** (filters.yaml): `biolink:Publication` (PMID/doi/PMC titles) and
+  `biolink:Agent` (BABEL carries it only as leftover-UMLS organization cliques — no
+  ROR/GRID/ORCID/ISNI/VIAF exist in BABEL, verified against the 2025mar31/2026jul22
+  snapshots; `drop_curie_prefixes_by_category` is the mechanism if a future source mixes
+  persons and institutes).
 - **Pure DataFrame transforms**: CliqueMerge/Uniqueness take and return DataFrames; no
   driver-side collection of clique data.
 - **Tests are offline by construction**: `FixtureSnapshotProvider` throws on non-local
   paths. Never add a test that needs the network; DownloadSuite uses an in-JVM
-  `com.sun.net.httpserver` fake instead.
+  `com.sun.net.httpserver` fake (live aria2 test self-skips when aria2c is absent).
 - **Fixture fidelity**: `test/resources/snapshots/mini/compendia/Gene.txt` line 1 is the
   verbatim G6PC1 clique from BABEL's docs/DataFormats.md. Keep fixture rows faithful to
   real BABEL shapes; test copies of configs live in `test/resources/config/` (keep in
@@ -70,28 +93,46 @@ beside it, plus `run_manifest.json`.
 - Scaladoc comments must not contain `*/` — write `compendia/ .txt`-style paths as
   `` `.txt` `` instead of `/*.txt`.
 
-## Build & run
+## Build & test
 
-Mill 1.x, Scala 2.13.16, Spark 4.0.1 (matches the system Spark). Mill defaults to
-`<module>/src`; this repo keeps the flat `src/` + `test/` layout via `moduleDir`
-overrides in `build.mill` — don't "fix" that by moving directories.
+Mill 1.x, Scala 2.13.16, Spark 4.0.1. Mill defaults to `<module>/src`; this repo keeps
+the flat `src/` + `test/` layout via `moduleDir` overrides in `build.mill` — don't "fix"
+that by moving directories.
 
 - `make setup` — resolve deps, compile everything
 - `make test` — offline test suite (parallel forked JVMs)
-- `make test-cluster` — starts the local standalone Spark master+worker
-  (`spark://127.0.0.1:7077`), builds the Spark-provided `cluster` assembly, runs the
-  suite with `AMALGAM_SPARK_MASTER` set (this activates `ClusterSuite`)
+- `make lint` / `make fix` — scalafix (OrganizeImports, RemoveUnused, DisableSyntax) +
+  scalafmt check / apply
+- `make check` — lint + tests (the quality gate)
+- `make test-cluster` — local standalone Spark master+worker, sets
+  `BIOLINKAMALGAM_SPARK_MASTER` (activates ClusterSuite)
+
+**This laptop (30GB) cannot run full builds or heavy test shards** — run them on
+wenceslaus (80 cores / 187GB; mill, Spark 4.0.1, aria2 are in its home-manager profile;
+`rebuild` = `home-manager switch --flake /local_raid1/sgoetz/home-manager#sgoetz`).
+Long remote jobs go in tmux (the jump path idle-kills SSH masters). Dev loop: edit
+locally, `rsync -az --delete --exclude out/ --exclude .git/ --exclude data/`
+to `/local_raid1/sgoetz/Code/ISB/BiolinkAmalgam/`, run the gate in tmux.
+
+## Run
+
 - `make run ARGS="run --babel <dir> --out out/run1"` — pipeline against a local snapshot
-- `make run ARGS="run --download 2025mar31 --out out/run1"` — download a BABEL snapshot
-  first (resumable)
-- `make fmt` / `make check` — scalafmt, then fmt-check + tests (the quality gate)
+- `make run ARGS="run --download 2026jul22 --snapshot-dir <dir> --profile wenceslaus --out out/run1"` —
+  bulk-download a BABEL snapshot first (aria2, resumable; NOT into out/, mill wipes it)
+- `make run ARGS="run --babel <dir> --sample 200000 --out out/sample"` — fast iteration:
+  caps raw rows per source before parsing
+- `make run ARGS="benchDownload --url <big-file-url> --out /tmp/dlbench"` — time aria2 vs
+  jdk-chunked vs jdk on a real file (evidence for `config/download.yaml`)
 
-This box: 16 CPUs / 20 GB. The `local` profile in `config/profiles.yaml` (cores.max=14,
-executor 10g, driver 4g, shuffle.partitions=56) is sized for it.
+## Adding your own data
 
-## Adding your own ontology
+Drop files into a directory and pass `--custom <dir>`:
 
-Drop a `.tsv` (`curie\tlabel\tsynonyms\tcategory\ttaxa`, pipe-separated lists) or
-`.jsonl` (`Schemas.custom`) file into a directory and pass `--custom <dir>`. Custom
-sources get priority 0 and outrank BABEL in arbitration. For anything more complex,
-subclass `SynonymSource` and add one line to `Registry.forConfig`.
+- `.tsv` — `curie\tlabel\tsynonyms\tcategory\ttaxa` (pipe-separated lists)
+- `.jsonl` — `Schemas.custom` rows
+- `.ndjson` — manual entries (BABEL PR #887 shape: `curie`, `type`, `preferred`,
+  `alternatives`, optional `equivalents` for multi-CURIE cliques, optional `taxa`).
+  Priority 0 — manual entries override BABEL (preferred name + arbitration tiebreaks).
+
+Custom sources get priority 0 and outrank BABEL in arbitration. For anything more
+complex, subclass `SynonymSource` and add one line to `Registry.forConfig`.

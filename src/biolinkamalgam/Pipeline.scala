@@ -4,8 +4,9 @@ import biolinkamalgam.config.Config
 import biolinkamalgam.export.{DatasetCard, Manifest, Parquet, Tsv}
 import biolinkamalgam.source.Registry
 import biolinkamalgam.transform.{CliqueMerge, Filters, Uniqueness}
-import java.util.concurrent.{Executors, TimeUnit}
 import org.apache.spark.sql.SparkSession
+
+import java.util.concurrent.{Executors, TimeUnit}
 
 /** Stage orchestration. Stages are data-dependent and run sequentially on purpose (ingest → merge → arbitrate); only
   * the four independent SINKS fan out concurrently off one persisted DataFrame — one computation, parallel writes.
@@ -20,7 +21,8 @@ object Pipeline {
       promoteConfig: os.Path,
       filtersConfig: os.Path,
       simpleExport: Boolean = false,
-      datasetMeta: Map[String, String] = Map.empty
+      datasetMeta: Map[String, String] = Map.empty,
+      sample: Option[Long] = None
   )
 
   def run(spark: SparkSession, opts: Options): Seq[Manifest.Stage] = {
@@ -41,7 +43,7 @@ object Pipeline {
     // then apply declarative category/prefix/taxon-allowlist filters.
     val cliques = timed("ingest") {
       val sources = Registry.forConfig(opts.babelDir, opts.customDir, promotePrefixes)
-      val df = Filters(Registry.loadAll(spark, sources), filters, taxa.allowlist)
+      val df = Filters(Registry.loadAll(spark, sources, opts.sample), filters, taxa.allowlist)
       (df, df.count())
     }
 
@@ -64,7 +66,9 @@ object Pipeline {
       val pool = Executors.newFixedThreadPool(4)
       try {
         val parquetFut =
-          pool.submit[Unit](() => Parquet.writeSingleFile(output, opts.outDir / "biolinkamalgam.parquet", opts.simpleExport))
+          pool.submit[Unit](() =>
+            Parquet.writeSingleFile(output, opts.outDir / "biolinkamalgam.parquet", opts.simpleExport)
+          )
         val conflictsFut = pool.submit[Unit](() => Tsv.writeSingleFile(conflicts, opts.outDir / "conflicts.tsv"))
         val mergesFut = pool.submit[Unit](() => Tsv.writeSingleFile(merges, opts.outDir / "merges.tsv"))
         parquetFut.get()

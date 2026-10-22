@@ -30,33 +30,48 @@ object FilterSuite extends TestSuite {
 
     test("numeric junk: decimals, signs, exponents — not just integers") {
       Seq("0.5", "1.05", "-3", "+42", "1e5", "2.5e-3", ".5", "51").foreach { n =>
-        assert(TermGates.isDeadTerm(n, cfg.deadTerms, cfg.compiledExcludeNameRegex), clue = n)
+        assert(TermGates.isDeadTerm(n, cfg.deadTerms, cfg.compiledExcludeNameRegex))
       }
       // identifiers and gene-like tokens survive
       Seq("bcl2", "g6pc1", "tnf-alpha", "3-methylcholanthrene").foreach { n =>
-        assert(!TermGates.isDeadTerm(n, cfg.deadTerms, cfg.compiledExcludeNameRegex), clue = n)
+        assert(!TermGates.isDeadTerm(n, cfg.deadTerms, cfg.compiledExcludeNameRegex))
       }
     }
 
     test("dead terms: fullmap sentinel baseline plus stopwords") {
       // fullmap is_dead_term baseline
-      Seq("none", "nan", "na", "null", "unknown", "not applicable", "p_value", "variable", "result", "exposure",
-        "expression", "symbol").foreach { t =>
-        assert(TermGates.isDeadTerm(t, cfg.deadTerms, cfg.compiledExcludeNameRegex), clue = t)
+      Seq(
+        "none",
+        "nan",
+        "na",
+        "null",
+        "unknown",
+        "not applicable",
+        "p_value",
+        "variable",
+        "result",
+        "exposure",
+        "expression",
+        "symbol"
+      ).foreach { t =>
+        assert(TermGates.isDeadTerm(t, cfg.deadTerms, cfg.compiledExcludeNameRegex))
       }
       // medically meaningless common words
       Seq("the", "and", "other", "miscellaneous").foreach { t =>
-        assert(TermGates.isDeadTerm(t, cfg.deadTerms, cfg.compiledExcludeNameRegex), clue = t)
+        assert(TermGates.isDeadTerm(t, cfg.deadTerms, cfg.compiledExcludeNameRegex))
       }
       assert(!TermGates.isDeadTerm("glucose", cfg.deadTerms, cfg.compiledExcludeNameRegex))
     }
 
-    test("admit applies gates to the cleaned form AND the level-one key") {
-      assert(!TermGates.admit("  0.5  ", cfg))
-      assert(!TermGates.admit("\"unknown\"", cfg)) // quotes cleaned away, then dead
-      assert(!TermGates.admit("English Language", cfg))
-      assert(TermGates.admit("G6PC1", cfg))
-      assert(TermGates.admit("glucose-6-phosphatase catalytic subunit 1", cfg))
+    test("admitted returns the cleaned form or null") {
+      assert(TermGates.admitted("  0.5  ", cfg) == null)
+      assert(TermGates.admitted("\"unknown\"", cfg) == null) // quotes cleaned away, then dead
+      assert(TermGates.admitted("English Language", cfg) == null)
+      assert(TermGates.admitted("G6PC1", cfg) == "g6pc1")
+      assert(
+        TermGates.admitted("Glucose-6-Phosphatase Catalytic Subunit 1", cfg) ==
+          "glucose-6-phosphatase catalytic subunit 1"
+      )
     }
 
     test("taxon allowlist retention mirrors fullmap retain_for_taxon_allowlist") {

@@ -1,202 +1,110 @@
+= BiolinkAmalgam
+:toc: macro
 
-.build.mill.yaml ({mill-download-url}/mill-dist-{mill-version}-example-scalalib-basic-1-simple.zip[download], {mill-example-url}/example/scalalib/basic/1-simple/build.mill.yaml[browse])
-[source,yaml,subs="attributes,verbatim"]
+A Spark/Scala pipeline that turns https://github.com/NCATSTranslator/Babel[BABEL] outputs (plus your own ontologies
+and hand-curated manual entries) into a *single parquet file* ready to publish as a Hugging Face dataset, with one
+hard invariant:
+
+____
+Within a given *class x taxon scope*, a synonym belongs to exactly *one* CURIE.
+____
+
+The dataset ships *original strings* with junk filtered out. Normalization (stemming, level keys) is deliberately
+NOT done here — downstream consumers (e.g. Tablassert's fullmap DB) own the real NLP. This codebase contains no
+stemmer.
+
+== Output
+
+`biolinkamalgam.parquet`, one row per surviving clique leader:
+
+[cols="1,1,2"]
+|===
+|Column |Type |Meaning
+
+|`CURIE` |string |clique leader identifier
+|`PREFERRED_NAME` |string |the clique's preferred name, as written
+|`CLASS` |string |Biolink category, e.g. `biolink:Gene`
+|`SYNONYMS` |array<string> |synonyms as originally written, sorted
+|===
+
+Beside it: `conflicts.tsv` (arbitration audit), `merges.tsv` (clique merge audit), `run_manifest.json` (stage
+metrics), and `README.md` — a generated Hugging Face dataset card with frontmatter, schema docs, filter summary, and
+run stats.
+
+== Build and test
+
+[source,bash]
 ----
-extends: ScalaModule
-scalaVersion: 3.8.2
-mvnDeps:
-- com.lihaoyi::scalatags:0.13.1
-- com.lihaoyi::mainargs:0.7.8
-----
-
-.test/package.mill.yaml ({mill-download-url}/mill-dist-{mill-version}-example-scalalib-basic-1-simple.zip[download], {mill-example-url}/example/scalalib/basic/1-simple/test/package.mill.yaml[browse])
-[source,yaml,subs="attributes,verbatim"]
-----
-extends: [build.ScalaTests, TestModule.Utest]
-mvnDeps:
-- com.lihaoyi::utest:0.9.1
-----
-This is a basic Mill build for a single `{language}Module`, with two
-third-party dependencies and a test suite using the JUnit framework.
-This uses Mill's declarative `.mill.yaml` files for defining the
-modules:
-
-- `build.mill.yaml` defines the configuration for the root module
-- `test/package.mill.yaml` defines the submodule `test/` containing the test suites.
-
-NOTE: `build.mill.yaml` and `package.mill.yaml` files import `build.\*` and
-`{language-small}lib.*` for convenience, allowing us to write `{language}Module`
-and `TestModule` un-qualified in the example above. You can also refer to it fully-qualified via
-`mill.{language-small}lib.{language}Module` and `mill.{language-small}lib.TestModule`.
-
-// SNIPPET:DEPENDENCIES
-
-This example project uses `mvnDeps` to include two third-party dependencies - MainArgs for
-CLI argument parsing, Scalatags for HTML generation - and uses them to wrap a given input
-string in HTML templates with proper escaping. The `test/` submodule contains its own `mvnDeps`
-for dependencies that are only used in the test suite.
-
-// SNIPPET:END
-
-Each module's keys (e.g. `mvnDeps`) and their expected types are listed in the module
-class's API documentation, e.g.
-
-* {mill-doc-url}/api/latest/mill/{language-small}lib/{language}Module.html#mvnDeps-0[mill.{language-small}lib.{language}Module]
-
-=== Basic Folder Layout
-
-The source code for this module lives in the `src/` folder.
-Output for this module (compiled files, resolved dependency lists, ...)
-lives in `out/`. A typical filesystem layout is shown below:
-
-// SNIPPET:TREE
-----
-build.mill.yaml
-src/
-    Foo.scala
-resources/
-    ...
-test/
-    package.mill.yaml
-    src/
-        FooTests.scala
-out/
-    compile.json
-    compile.dest/
-    ...
-    test/
-        compile.json
-        compile.dest/
-        ...
+make setup   # resolve deps, compile
+make test    # offline test suite (fixtures only, no network)
+make lint    # scalafix --check + scalafmt --check
+make fix     # apply scalafix rewrites + reformat
+make check   # lint + test (the quality gate)
 ----
 
-NOTE: The default Mill source folder layout `src/` differs from that of ``sbt``'s
-`src/main/scala`.
-If you wish to use the `sbt` source folder layout, e.g. for migrating
-an existing codebase, you should use
-xref:#_sbt_compatible_modules[`sbt`-Compatible Modules]
+Heavy runs (full BABEL snapshot) belong on a big box; the `wenceslaus` profile in `config/profiles.yaml` is sized
+for 80 cores / 187GB.
 
-// SNIPPET:END
+== Run
 
-=== Typical Usage
-
-Typical usage of this example project from the command line is shown below:
-
-
-[source,console,subs="attributes,verbatim"]
+[source,bash]
 ----
-> ./mill resolve _ # List what tasks are available to run
-assembly
-...
-compile
-...
-run
-...
-----
-// SNIPPET:USAGE
+# Download a whole BABEL snapshot at once (bulk aria2c, resumable), then build:
+./mill biolinkamalgam.run run --download 2026jul22 --profile wenceslaus \
+  --out out/run1 --snapshot-dir /data/snapshots/2026jul22
 
+# Against an already-downloaded snapshot:
+./mill biolinkamalgam.run run --babel /path/to/snapshot --out out/run1
 
-[source,console,subs="attributes,verbatim"]
-----
-> ./mill inspect compile # Show documentation and inputs of a task
-compile(ScalaModule.scala:...)
-    Compiles the current module to generate compiled classfiles/bytecode.
-Inputs:
-    upstreamCompileOutput
-    allSourceFiles
-    compileClasspath
+# Fast iteration: cap raw rows read per source (smoke-test config changes in seconds):
+./mill biolinkamalgam.run run --babel /path/to/snapshot --sample 200000 --out out/sample1
+
+# Benchmark the download engines against one URL (evidence for download.yaml):
+./mill biolinkamalgam.run benchDownload --url <big-file-url> --out /tmp/dlbench
 ----
 
-[source,console,subs="attributes,verbatim"]
+The downloader is pluggable in `config/download.yaml` (`engine: aria2 | jdk-chunked | jdk`), one bulk invocation for
+the whole snapshot, resume/skip via HEAD size checks. Split compendium parts (`Gene.txt.00`...) are preferred over
+their whole-file twins automatically (never both — no double ingest).
+
+== Configuration (all YAML, all commented)
+
+[cols="1,2"]
+|===
+|File |Decides
+
+|`config/taxa.yaml` |major-taxon bucketing + the top-100 `taxon_allowlist` (fullmap parity; empty disables)
+|`config/filters.yaml` |category drops (`biolink:Publication`, `biolink:Agent`), per-category CURIE prefix drops,
+banned substrings (`language`, `uncharacterized`, `hypothetical`), dead-term stopwords, numeric-junk regex
+(incl. decimals like `0.5`), CURIE regex drops
+|`config/promote_prefixes.yaml` |identifier prefixes promoted to synonyms (INCHIKEY)
+|`config/download.yaml` |download engine + tuning, snapshot base URL, file exclusions (Publication parts skipped)
+|`config/profiles.yaml` |named Spark profiles (cores/memory/master/shuffle), cluster targeting as pure YAML
+|===
+
+== Adding your own data
+
+Drop files into a directory and pass `--custom <dir>`:
+
+* `.tsv` — `curie\tlabel\tsynonyms\tcategory\ttaxa` (pipe-separated lists)
+* `.jsonl` — rows matching the custom schema (`curie`, `label`, `synonyms`, `category`, `taxa`)
+* `.ndjson` — *manual entries* (BABEL
+  https://github.com/NCATSTranslator/Babel/pull/887[PR #887] shape): `curie`, `type`, `preferred`, `alternatives`,
+  optional `equivalents` (multi-CURIE cliques; `curie` stays the leader), optional `taxa`. Priority 0: manual entries
+  *override* — they win preferred names and arbitration tiebreaks against every other source.
+
+[source,json]
 ----
-> ./mill compile # compile sources into classfiles
-...
-compiling 1 Scala source to...
-----
-
-[source,console,subs="attributes,verbatim"]
-----
-> ./mill test
-...
-+ foo.FooTests...simple ...  "<h1>hello</h1>"
-+ foo.FooTests...escaping ...  "<h1>&lt;hello&gt;</h1>"
-----
-// SNIPPET:END
-
-
-[source,console,subs="attributes,verbatim"]
-----
-> ./mill run --text hello
-<h1>hello</h1>
-----
-
-[source,console,subs="attributes,verbatim"]
-----
-> ./mill assembly # bundle classfiles and libraries into a jar for deployment
-
-> ./mill show assembly # show the output of the assembly task
-".../out/assembly.dest/out.jar"
-
-> java -jar ./out/assembly.dest/out.jar --text hello
-<h1>hello</h1>
-
-> ./out/assembly.dest/out.jar --text hello # mac/linux
-<h1>hello</h1>
-
-> # Note that on windows you need to rename `out.jar` to `out.bat` to run it without `java -jar`
-> cp ./out/assembly.dest/out.jar out.bat # windows
-
-> ./out.bat --text hello # windows
-<h1>hello</h1>
-----
-The output of every Mill task is stored in the `out/` folder under a name
-corresponding to the task that created it. e.g. The `assembly` task puts its
-metadata output in `out/assembly.json`, and its output files in
-`out/assembly.dest`. You can also use `show` to print out the
-metadata output for a particular task, or `inspect` to print metadata about
-the task itself (docs, source location, etc.)
-
-Additional Mill tasks you would likely need include:
-
-[source,console]
-----
-> ./mill resolve __    # recursively list all tasks and modules that are available
-
-> ./mill runBackground # run the main method in the background
-
-> ./mill clean <task>  # delete the cached output of a task, terminate any runBackground
-
-> ./mill launcher      # prepares a out/launcher.dest/run you can run later
-
-> ./mill jar           # bundle the classfiles into a jar suitable for publishing
-
-> ./mill -w compile    # watch input files and re-compile whenever a file changes
+{"curie": "EUPATH:0009259", "type": "biolink:ClinicalFinding", "preferred": "Shannon-indexed alpha diversity data", "alternatives": ["Shannon alpha diversity", "Alpha diversity"]}
 ----
 
-// SNIPPET:REPL
+For anything more complex, subclass `SynonymSource` and add one line to `Registry.forConfig`.
 
-You can start a Scala REPL attached to your root module or the test submodule via
+== Rules that will not change
 
-[source,console]
-----
-> ./mill repl    # start a Scala REPL within your project
-> ./mill test.repl
-
-----
-
-You can also start a standalone Scala REPL via `./mill repl` from any directory,
-even without a `build.mill` file present.
-
-// SNIPPET:END
-
-The most common *tasks* that Mill can run are cached tasks, such as
-`compile`, and un-cached *commands* such as `run`. Cached tasks do not
-re-evaluate unless one of their inputs changes, whereas commands re-run every
-time. See the documentation for xref:fundamentals/tasks.adoc[Tasks] for
-details on the different task types.
-
-This example uses Mill's declarative YAML syntax, which is a good fit for simple builds
-where you are just setting some configuration keys. This is discussed more in the documentation
-for:
-
-* xref:{language-small}lib/module-config.adoc#_declarative_configuration[Declarative {language} Configuration]
+* No conflation, ever: `synonyms-conflated/` and `+*Conflated*+` files are never read.
+* Taxon bucketing: only `major_taxa` get their own scope; the long tail shares `__OTHER_TAXA__`, taxonless cliques
+  share `__NO_TAXON__`. The same name MAY recur across categories or taxa.
+* Winner order (merge and arbitration): preferred-name match, most synonyms, identifier count, source priority
+  (lower wins; manual/custom 0, BABEL 10), smallest CURIE. Total order — reruns reproduce.
+* Tests are offline by construction: `FixtureSnapshotProvider` throws on non-local paths.

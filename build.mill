@@ -1,9 +1,9 @@
+//| mvnDeps:
+//| - com.goyeau::mill-scalafix::0.6.0
 // BiolinkAmalgam build — Scala 2.13.16 + Spark 4.0.1 (matches the system Spark on PATH).
 // Two modules, one codebase:
 //   ./mill biolinkamalgam.assembly  → local jar, Spark bundled (`java -jar` / `local[*]` runs)
 //   ./mill cluster.assembly  → cluster jar, Spark compile-only (`spark-submit` provides it)
-//| mvnDeps:
-//| - com.goyeau::mill-scalafix::0.6.0
 package build
 
 import com.goyeau.mill.scalafix.ScalafixModule
@@ -26,7 +26,6 @@ trait BiolinkAmalgamModule extends ScalaModule with ScalafmtModule with Scalafix
   def commonDeps = Seq(
     mvn"com.lihaoyi::mainargs:0.7.8",
     mvn"com.lihaoyi::os-lib:0.11.4",
-    mvn"org.apache.lucene:lucene-analysis-common:9.12.2",
     mvn"org.yaml:snakeyaml:2.4"
   )
 

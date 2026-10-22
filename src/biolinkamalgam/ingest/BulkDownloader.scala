@@ -1,8 +1,9 @@
 package biolinkamalgam.ingest
 
 import biolinkamalgam.config.Config.Aria2Config
-import java.net.http.{HttpClient, HttpRequest, HttpResponse}
+
 import java.net.URI
+import java.net.http.{HttpClient, HttpRequest, HttpResponse}
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.file.{StandardOpenOption => SO}
@@ -10,8 +11,8 @@ import java.util.concurrent.{CompletableFuture, Semaphore}
 
 /** Bulk snapshot downloads. Two engines behind one seam, selected in config/download.yaml:
   *
-  *   - `Aria2BulkDownloader` (default): ONE aria2c process for the whole snapshot — multi-connection range requests
-  *     per file times concurrent files, resumable via aria2 control files. For plain HTTPS from stars.renci.org this
+  *   - `Aria2BulkDownloader` (default): ONE aria2c process for the whole snapshot — multi-connection range requests per
+  *     file times concurrent files, resumable via aria2 control files. For plain HTTPS from stars.renci.org this
   *     saturates the link; per-connection server throttling is the ceiling and parallel segments are the only lever.
   *   - `JdkBulkDownloader` (fallback): the original async JDK HttpClient engine, for boxes without aria2c.
   */
@@ -24,8 +25,8 @@ trait BulkDownloader {
 object BulkDownloader {
 
   /** Drop files already fully downloaded (local size == remote Content-Length). One batched round of async HEADs, so
-  * reruns of an interrupted snapshot cost seconds, not a re-download.
-  */
+    * reruns of an interrupted snapshot cost seconds, not a re-download.
+    */
   def skipComplete(
       client: HttpClient,
       files: Seq[(os.SubPath, String)],
@@ -53,7 +54,8 @@ object BulkDownloader {
 }
 
 /** aria2c engine: one process, one input file. Resume is aria2's own (control files + `--continue`), plus the HEAD
-  * pre-filter for completed files (aria2 alone would re-fetch those). */
+  * pre-filter for completed files (aria2 alone would re-fetch those).
+  */
 class Aria2BulkDownloader(cfg: Aria2Config) extends BulkDownloader {
 
   /** aria2 `--input-file` body: URL line followed by an indented per-file `out=` preserving the snapshot's relative
@@ -104,20 +106,18 @@ class JdkBulkDownloader(maxConcurrent: Int = 8) extends BulkDownloader {
   override def downloadAll(files: Seq[(os.SubPath, String)], destDir: os.Path): Unit = {
     val gate = new Semaphore(maxConcurrent)
     val futures = files.map { case (sub, url) =>
-      CompletableFuture.runAsync(
-        () => {
-          gate.acquire()
-          try download(url, destDir / sub)
-          finally gate.release()
-        }
-      )
+      CompletableFuture.runAsync(() => {
+        gate.acquire()
+        try download(url, destDir / sub)
+        finally gate.release()
+      })
     }
     CompletableFuture.allOf(futures: _*).join()
     ()
   }
 
-  /** Download one file with resume: append to `<file>.partial` via HTTP Range, then atomically rename into place.
-    * Skips files already complete (size match via HEAD).
+  /** Download one file with resume: append to `<file>.partial` via HTTP Range, then atomically rename into place. Skips
+    * files already complete (size match via HEAD).
     */
   def download(url: String, dest: os.Path): Unit = {
     os.makeDir.all(dest / os.up)
@@ -188,5 +188,81 @@ class JdkBulkDownloader(maxConcurrent: Int = 8) extends BulkDownloader {
       java.nio.file.StandardCopyOption.ATOMIC_MOVE
     )
     ()
+  }
+}
+
+/** JDK engine with per-file parallel HTTP Range chunks (aria2-style, no external binary). Chunks land in per-chunk part
+  * files (streamed to disk, never held in memory) and are concatenated sequentially. Resume granularity is the whole
+  * file (aria2's per-chunk resume is finer); completed files are skipped by the HEAD pre-filter either way. Exists to
+  * be benchmarked against aria2 (`bench/download`), not as a default.
+  */
+class ChunkedJdkBulkDownloader(
+    connectionsPerFile: Int = 8,
+    maxConcurrentFiles: Int = 4
+) extends BulkDownloader {
+
+  private val client = HttpClient.newHttpClient()
+
+  override def downloadAll(files: Seq[(os.SubPath, String)], destDir: os.Path): Unit = {
+    val remaining = BulkDownloader.skipComplete(client, files, destDir)
+    val gate = new Semaphore(maxConcurrentFiles)
+    val futures = remaining.map { case (sub, url) =>
+      CompletableFuture.runAsync(() => {
+        gate.acquire()
+        try downloadChunked(url, destDir / sub)
+        finally gate.release()
+      })
+    }
+    CompletableFuture.allOf(futures: _*).join()
+    ()
+  }
+
+  /** One file in `connectionsPerFile` range chunks (single GET below the chunk threshold or when the server ignores
+    * ranges), then concat + atomic rename.
+    */
+  def downloadChunked(url: String, dest: os.Path): Unit = {
+    os.makeDir.all(dest / os.up)
+    val uri = URI.create(url)
+    val head = client.send(
+      HttpRequest.newBuilder(uri).method("HEAD", HttpRequest.BodyPublishers.noBody()).build(),
+      HttpResponse.BodyHandlers.discarding()
+    )
+    val size = head.headers().firstValueAsLong("Content-Length").orElse(-1L)
+    if (size <= 0) { new JdkBulkDownloader().download(url, dest); return }
+
+    val chunks = math.max(1, math.min(connectionsPerFile, size / (16 * 1024 * 1024)).toInt)
+    if (chunks == 1) { new JdkBulkDownloader().download(url, dest); return }
+
+    val bounds = (0 until chunks).map { i =>
+      val from = size * i / chunks
+      val to = if (i == chunks - 1) size - 1 else size * (i + 1) / chunks - 1
+      (from, to)
+    }
+    val partFutures = bounds.zipWithIndex.map { case ((from, to), i) =>
+      val part = dest.toNIO.resolveSibling(s"${dest.last}.chunk$i")
+      val req = HttpRequest.newBuilder(uri).header("Range", s"bytes=$from-$to").GET().build()
+      client.sendAsync(req, HttpResponse.BodyHandlers.ofFile(part)).thenApply { resp =>
+        if (resp.statusCode() != 206)
+          throw new RuntimeException(s"chunk $i of $url: expected 206, got HTTP ${resp.statusCode()}")
+        part
+      }
+    }
+    CompletableFuture.allOf(partFutures: _*).join()
+    val parts = partFutures.map(_.join())
+
+    val target = dest.toNIO
+    val out = FileChannel.open(target, SO.CREATE, SO.WRITE, SO.TRUNCATE_EXISTING)
+    try {
+      parts.foreach { p =>
+        val in = FileChannel.open(p, SO.READ)
+        try in.transferTo(0, java.nio.file.Files.size(p), out)
+        finally { in.close(); java.nio.file.Files.delete(p) }
+      }
+    } finally out.close()
+
+    if (java.nio.file.Files.size(target) != size)
+      throw new RuntimeException(
+        s"chunked download size mismatch for $url: ${java.nio.file.Files.size(target)} != $size"
+      )
   }
 }

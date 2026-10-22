@@ -70,25 +70,30 @@ object Schemas {
     )
   )
 
-  /** One surviving synonym with its fullmap keys. NAME keeps the original string; L1 is the level-one (Porter2)
-    * key; L2 is the level-two ([a-z0-9_]-only) key, null when it equals L1 or fails the gates — the exact dedup the
-    * fullmap DB build applies at emit time, so the parquet converts into the DB with no re-normalization.
+  /** A hand-curated manual entry (BABEL PR #887 `manual_terms.ndjson` shape): one clique per row, `curie` first among
+    * identifiers, `equivalents` for multi-CURIE cliques, `alternatives` as extra names. Priority 0 — manual entries
+    * outrank every other source.
     */
-  val synonymEntry: StructType = StructType(
+  val manual: StructType = StructType(
     Seq(
-      StructField("NAME", StringType, nullable = false),
-      StructField("L1", StringType, nullable = false),
-      StructField("L2", StringType, nullable = true)
+      StructField("curie", StringType, nullable = true),
+      StructField("type", StringType, nullable = true),
+      StructField("preferred", StringType, nullable = true),
+      StructField("alternatives", ArrayType(StringType, containsNull = false), nullable = true),
+      StructField("equivalents", ArrayType(StringType, containsNull = false), nullable = true),
+      StructField("taxa", ArrayType(StringType, containsNull = false), nullable = true)
     )
   )
 
-  /** The deliverable: one parquet file, one row per clique leader. */
+  /** The deliverable: one parquet file, one row per clique leader. SYNONYMS keeps ORIGINAL strings, sorted; junk gates
+    * (filters.yaml) are the only filtering — real NLP (stemming, level keys) is downstream's job.
+    */
   val output: StructType = StructType(
     Seq(
       StructField("CURIE", StringType, nullable = false),
       StructField("PREFERRED_NAME", StringType, nullable = true),
       StructField("CLASS", StringType, nullable = false),
-      StructField("SYNONYMS", ArrayType(synonymEntry, containsNull = false), nullable = false)
+      StructField("SYNONYMS", ArrayType(StringType, containsNull = false), nullable = false)
     )
   )
 }

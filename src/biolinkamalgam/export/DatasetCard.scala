@@ -1,10 +1,10 @@
 package biolinkamalgam.export
 
-/** Hugging Face dataset card: README.md with YAML frontmatter, generated per run so the card always matches the
-  * parquet it sits beside. Pure string generation (unit-testable, no Spark) plus a thin file writer.
+/** Hugging Face dataset card: README.md with YAML frontmatter, generated per run so the card always matches the parquet
+  * it sits beside. Pure string generation (unit-testable, no Spark) plus a thin file writer.
   *
-  * Upload flow: create a dataset repo on hf.co, drop in `biolinkamalgam.parquet` + this `README.md` — the hub's
-  * parquet auto-conversion and viewer pick it up with no further config.
+  * Upload flow: create a dataset repo on hf.co, drop in `biolinkamalgam.parquet` + this `README.md` — the hub's parquet
+  * auto-conversion and viewer pick it up with no further config.
   */
 object DatasetCard {
 
@@ -55,21 +55,19 @@ object DatasetCard {
        |Biomedical entity synonym cliques built from [BABEL](https://github.com/TranslatorSRI/Babel)
        |compendia and synonyms (snapshot: `$babel`), merged and arbitrated so that
        |**within a (class, taxon scope), a synonym belongs to exactly one CURIE**.
-       |Normalization keys follow the [Tablassert](https://github.com/SkyeAv/Tablassert) fullmap DB
-       |exactly, so this dataset converts into a fullmap database without re-normalization.
+       |Synonyms are the ORIGINAL strings with junk filtered out (see below); normalization
+       |(stemming, level keys) is deliberately left to downstream consumers.
        |
        |## Schema
        |
-       |One row per surviving clique leader. `SYNONYMS` is a list of structs:
+       |One row per surviving clique leader.
        |
        || Column | Type | Meaning |
        ||---|---|---|
        || `CURIE` | string | clique leader identifier |
-       || `PREFERRED_NAME` | string | the clique's preferred name, as written (never stemmed) |
+       || `PREFERRED_NAME` | string | the clique's preferred name, as written |
        || `CLASS` | string | Biolink category, e.g. `biolink:Gene` |
-       || `SYNONYMS[].NAME` | string | synonym, original string |
-       || `SYNONYMS[].L1` | string | level-one key: clean (trim, quote-strip, lowercase), whitespace tokens, Porter2 stem of all-ASCII-alphabetic tokens, dedupe, sort, space-join |
-       || `SYNONYMS[].L2` | string | level-two key: `[a-z0-9_]` only; `null` when identical to `L1` (the fullmap DB's emit-time dedup) |
+       || `SYNONYMS` | list<string> | synonyms as originally written, sorted; a synonym appears in at most one row per (class, taxon scope) |
        |
        |## What was filtered
        |

@@ -3,8 +3,8 @@ package biolinkamalgam
 import org.apache.spark.sql.SparkSession
 import utest._
 
-/** Smoke test against the real local standalone cluster. Only runs when BIOLINKAMALGAM_SPARK_MASTER is set — i.e. via `make
-  * test-cluster`, which starts the services, sets the variable, and points spark.jars at the cluster assembly.
+/** Smoke test against the real local standalone cluster. Only runs when BIOLINKAMALGAM_SPARK_MASTER is set — i.e. via
+  * `make test-cluster`, which starts the services, sets the variable, and points spark.jars at the cluster assembly.
   *
   * Executors run as the `spark` system user, so fixtures and the output dir are staged under /tmp with
   * world-readable/writable permissions — anything under $HOME is invisible to them.
@@ -65,9 +65,9 @@ object ClusterSuite extends TestSuite {
                 filtersConfig = staging / "filters.yaml"
               )
             )
-            assert(stages.find(_.name == "arbitrate").get.rows == 9)
+            assert(stages.find(_.name == "arbitrate").get.rows == 13)
             val back = spark.read.parquet((out / "biolinkamalgam.parquet").toString)
-            assert(back.count() == 9)
+            assert(back.count() == 13)
           } finally {
             spark.stop()
             os.remove.all(staging)

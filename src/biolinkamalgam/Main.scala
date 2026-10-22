@@ -2,7 +2,13 @@ package biolinkamalgam
 
 import biolinkamalgam.config.Config
 import biolinkamalgam.export.Manifest
-import biolinkamalgam.ingest.{Aria2BulkDownloader, FixtureSnapshotProvider, JdkBulkDownloader, RemoteSnapshotProvider}
+import biolinkamalgam.ingest.{
+  Aria2BulkDownloader,
+  ChunkedJdkBulkDownloader,
+  FixtureSnapshotProvider,
+  JdkBulkDownloader,
+  RemoteSnapshotProvider
+}
 import biolinkamalgam.spark.SparkSupport
 import mainargs.main
 
@@ -11,10 +17,13 @@ import mainargs.main
   */
 object Main {
 
-  /** Resolve (master, spark conf) from a profile. The reserved `master` key is pulled out of the conf; an explicit
-    * CLI `--master` wins over the profile's.
+  /** Resolve (master, spark conf) from a profile. The reserved `master` key is pulled out of the conf; an explicit CLI
+    * `--master` wins over the profile's.
     */
-  private def sparkSettings(profile: Option[String], cliMaster: Option[String]): (Option[String], Map[String, String]) = {
+  private def sparkSettings(
+      profile: Option[String],
+      cliMaster: Option[String]
+  ): (Option[String], Map[String, String]) = {
     val profileConf: Map[String, String] = profile match {
       case Some(name) => Config.loadProfile(os.pwd / "config" / "profiles.yaml", name)
       case None       => Map.empty
@@ -34,20 +43,22 @@ object Main {
       snapshotDir: Option[String] = None,
       master: Option[String] = None,
       profile: Option[String] = None,
+      sample: Option[Long] = None,
       simpleExport: mainargs.Flag = mainargs.Flag(false)
   ): Unit = {
     val babelDir: Option[os.Path] = (babel, download) match {
-      case (Some(dir), _) => Some(new FixtureSnapshotProvider(os.Path(dir, os.pwd)).ensureSnapshot(os.pwd))
+      case (Some(dir), _)        => Some(new FixtureSnapshotProvider(os.Path(dir, os.pwd)).ensureSnapshot(os.pwd))
       case (None, Some(version)) =>
         // Not under out/: mill owns that dir and `mill clean` would wipe a
         // multi-GB snapshot.
         val dir = snapshotDir.map(os.Path(_, os.pwd)).getOrElse(os.pwd / "data" / "snapshots" / version)
         val dl = Config.loadDownload(os.Path(downloadConfig, os.pwd))
         val engine = dl.engine match {
-          case "aria2" => new Aria2BulkDownloader(dl.aria2)
-          case _       => new JdkBulkDownloader(dl.jdkConcurrency)
+          case "aria2"       => new Aria2BulkDownloader(dl.aria2)
+          case "jdk-chunked" => new ChunkedJdkBulkDownloader(dl.chunkedConnectionsPerFile, dl.jdkConcurrency)
+          case _             => new JdkBulkDownloader(dl.jdkConcurrency)
         }
-        Some(new RemoteSnapshotProvider(version, engine, dl.baseUrl).ensureSnapshot(dir))
+        Some(new RemoteSnapshotProvider(version, engine, dl.baseUrl, dl.excludeFileRegex).ensureSnapshot(dir))
       case (None, None) => None
     }
 
@@ -64,6 +75,7 @@ object Main {
           promoteConfig = os.Path(promoteConfig, os.pwd),
           filtersConfig = os.Path(filtersConfig, os.pwd),
           simpleExport = simpleExport.value,
+          sample = sample,
           datasetMeta = Map(
             "babel" -> download.getOrElse(babel.map(d => s"local:$d").getOrElse("none")),
             "custom" -> custom.getOrElse("none")
@@ -124,6 +136,32 @@ object Main {
         stages.foreach(s => println(f"${s.name}%-12s ${s.rows}%12d rows  ${s.millis}%8d ms"))
       } finally os.remove.all(tmpOut)
     } finally spark.stop()
+  }
+
+  /** Time one URL through each download engine — the evidence for which engine download.yaml should name. */
+  @main def benchDownload(
+      url: String,
+      out: String,
+      connections: Int = 16,
+      files: Int = 8
+  ): Unit = {
+    val dest = os.Path(out, os.pwd)
+    os.makeDir.all(dest)
+    Seq(
+      "aria2" -> new Aria2BulkDownloader(
+        Config.Aria2Config(connectionsPerFile = connections, split = connections, concurrentFiles = files)
+      ),
+      "jdk-chunked" -> new ChunkedJdkBulkDownloader(connections, files),
+      "jdk" -> new JdkBulkDownloader(files)
+    ).foreach { case (name, engine) =>
+      val target = dest / s"$name" / "bench.bin"
+      os.remove.all(target / os.up)
+      val t0 = System.nanoTime()
+      engine.downloadAll(Seq(os.sub / "bench.bin" -> url), target / os.up)
+      val ms = (System.nanoTime() - t0) / 1000000
+      val size = os.size(target)
+      println(f"$name%-12s $size%12d bytes in ${ms}%8d ms  ${size / 1048576.0 / (ms / 1000.0)}%8.1f MB/s")
+    }
   }
 
   def main(args: Array[String]): Unit = mainargs.ParserForMethods(this).runOrExit(args)

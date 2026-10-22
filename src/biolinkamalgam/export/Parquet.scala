@@ -2,9 +2,8 @@ package biolinkamalgam.export
 
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
-import org.apache.parquet.hadoop.ParquetFileWriter
-import org.apache.parquet.hadoop.ParquetFileReader
 import org.apache.parquet.hadoop.util.{HadoopInputFile, HadoopOutputFile}
+import org.apache.parquet.hadoop.{ParquetFileReader, ParquetFileWriter}
 import org.apache.spark.sql.DataFrame
 
 /** Parquet export: parallel partitioned write, then a binary row-block concat + footer rewrite (PARQUET-460 style, via

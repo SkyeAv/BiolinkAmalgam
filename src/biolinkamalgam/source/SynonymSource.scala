@@ -1,8 +1,8 @@
 package biolinkamalgam.source
 
 import biolinkamalgam.schema.Schemas
-import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.apache.spark.sql.functions._
+import org.apache.spark.sql.{DataFrame, SparkSession}
 
 /** Inheritable base class for every synonym source (BABEL's or your own), modeled on BABEL's per-source datahandler
   * pattern. Adding a new source = subclass + one line in the Registry — no pipeline edits.
@@ -25,11 +25,22 @@ abstract class SynonymSource(val name: String, val priority: Int) {
   /** Optional hook after transform (e.g. source-specific name cleanup). */
   def postprocess(df: DataFrame): DataFrame = df
 
-  /** Full read pipeline; the Registry unions these. */
-  final def load(spark: SparkSession, path: os.Path): DataFrame =
-    postprocess(transform(preprocess(read(spark, path))))
+  /** Full read pipeline; the Registry unions these. `sample` caps the RAW rows read per source (text-scan limit,
+    * applied before parsing) — iteration smoke tests, never for production runs.
+    */
+  final def load(spark: SparkSession, path: os.Path, sample: Option[Long] = None): DataFrame =
+    postprocess(transform(preprocess(sampledRead(spark, path, sample))))
       .withColumn("source", lit(name))
       .withColumn("priority", lit(priority))
+
+  /** read() with optional sampling; JSONL sources override `readFiles`/`schema` to get text-limit sampling. */
+  protected def sampledRead(spark: SparkSession, path: os.Path, sample: Option[Long]): DataFrame =
+    sample match {
+      case None => read(spark, path)
+      case Some(n) =>
+        val capped = math.min(n, Int.MaxValue).toInt
+        read(spark, path).limit(capped)
+    }
 }
 
 /** BABEL compendia `.txt` — one JSONL clique per line; first identifier is the leader. Member labels fold into names;
@@ -37,8 +48,28 @@ abstract class SynonymSource(val name: String, val priority: Int) {
   */
 class BabelCompendiumSource(promotePrefixes: Set[String]) extends SynonymSource("babel:compendia", priority = 10) {
 
-  override def read(spark: SparkSession, path: os.Path): DataFrame =
-    spark.read.schema(Schemas.compendium).json((path / "compendia").toString)
+  /** Reads only the files SnapshotFiles selects: split parts XOR their whole file, never aria2 leftovers. */
+  override def read(spark: SparkSession, path: os.Path): DataFrame = {
+    val dir = path / "compendia"
+    val files = biolinkamalgam.ingest.SnapshotFiles.select(os.list(dir).filter(os.isFile).map(_.last))
+    if (files.isEmpty) throw new IllegalArgumentException(s"no compendium files in $dir")
+    spark.read.schema(Schemas.compendium).json(files.map(f => (dir / f).toString): _*)
+  }
+
+  // Sampling reads the files as text and limits BEFORE JSON parsing — the whole
+  // point is not paying full-scan parse cost during iteration.
+  override protected def sampledRead(spark: SparkSession, path: os.Path, sample: Option[Long]): DataFrame =
+    sample match {
+      case None => read(spark, path)
+      case Some(n) =>
+        val dir = path / "compendia"
+        val files = biolinkamalgam.ingest.SnapshotFiles.select(os.list(dir).filter(os.isFile).map(_.last))
+        spark.read
+          .text(files.map(f => (dir / f).toString): _*)
+          .limit(math.min(n, Int.MaxValue).toInt)
+          .select(from_json(col("value"), Schemas.compendium).as("j"))
+          .select("j.*")
+    }
 
   override def transform(raw: DataFrame): DataFrame = {
     // `functions.transform` must be aliased: the enclosing class's own `transform`
@@ -52,6 +83,8 @@ class BabelCompendiumSource(promotePrefixes: Set[String]) extends SynonymSource(
         col("preferred_name"),
         col("type").as("category"),
         coalesce(col("taxa"), array()).as("taxa"),
+        // the clique's identifier CURIEs as plain strings (raw shape is structs)
+        mapValues(col("identifiers"), id => id("i")).as("identifier_curies"),
         col("identifiers").as("identifiers")
       )
       .select(
@@ -59,6 +92,7 @@ class BabelCompendiumSource(promotePrefixes: Set[String]) extends SynonymSource(
         col("preferred_name"),
         col("category"),
         col("taxa"),
+        col("identifier_curies").as("identifiers"),
         // member labels + promoted-prefix identifier strings as names
         array_distinct(
           flatten(
@@ -100,6 +134,25 @@ class BabelSynonymSource extends SynonymSource("babel:synonyms", priority = 10) 
     else spark.read.schema(Schemas.synonym).json(files: _*)
   }
 
+  override protected def sampledRead(spark: SparkSession, path: os.Path, sample: Option[Long]): DataFrame =
+    sample match {
+      case None => read(spark, path)
+      case Some(n) =>
+        val dir = (path / "synonyms").toIO
+        val files =
+          Option(dir.listFiles()).toSeq.flatten
+            .filter(f => f.getName.endsWith(".txt.gz") || f.getName.endsWith(".txt"))
+            .filterNot(_.getName.contains("Conflated"))
+            .map(_.getAbsolutePath)
+        if (files.isEmpty) spark.emptyDataFrame
+        else
+          spark.read
+            .text(files: _*)
+            .limit(math.min(n, Int.MaxValue).toInt)
+            .select(from_json(col("value"), Schemas.synonym).as("j"))
+            .select("j.*")
+    }
+
   override def transform(raw: DataFrame): DataFrame =
     raw
       .filter(col("curie").isNotNull)
@@ -110,6 +163,9 @@ class BabelSynonymSource extends SynonymSource("babel:synonyms", priority = 10) 
         element_at(col("types"), 1).as("category"),
         coalesce(col("taxa"), array()).as("taxa"),
         coalesce(col("names"), array()).as("names"),
+        // synonyms rows name only the leader CURIE; clique_identifier_count
+        // remains the authoritative count
+        array(col("curie")).as("identifiers"),
         coalesce(col("clique_identifier_count"), lit(1)).as("identifier_count")
       )
       .filter(col("category").isNotNull)
@@ -159,4 +215,35 @@ class CustomTableSource(file: os.Path) extends SynonymSource(s"custom:${file.las
         array(col("curie")).as("identifiers"),
         lit(1).as("identifier_count")
       )
+}
+
+/** Hand-curated manual entries (BABEL PR #887 `manual_terms.ndjson` shape): one NDJSON row per clique — `curie`,
+  * `type`, `preferred`, `alternatives`, optional `equivalents` (multi-CURIE cliques, `curie` stays the leader),
+  * optional `taxa`. Priority 0: manual entries outrank every other source, which makes them OVERRIDES — redefining a
+  * CURIE that BABEL also leads wins the preferred name and wins arbitration tiebreaks.
+  */
+class ManualSource(file: os.Path) extends SynonymSource(s"manual:${file.last}", priority = 0) {
+
+  override def read(spark: SparkSession, path: os.Path): DataFrame =
+    spark.read.schema(Schemas.manual).json(file.toString)
+
+  override def transform(raw: DataFrame): DataFrame =
+    raw
+      .filter(col("curie").isNotNull && col("type").isNotNull)
+      .select(
+        col("curie").as("leader"),
+        col("preferred").as("preferred_name"),
+        col("type").as("category"),
+        coalesce(col("taxa"), array()).as("taxa"),
+        array_distinct(
+          concat(
+            when(col("preferred").isNotNull && length(col("preferred")) > 0, array(col("preferred")))
+              .otherwise(array()),
+            coalesce(col("alternatives"), array())
+          )
+        ).as("names"),
+        array_distinct(concat(array(col("curie")), coalesce(col("equivalents"), array()))).as("identifiers"),
+        lit(1).as("identifier_count")
+      )
+      .withColumn("identifier_count", size(col("identifiers")))
 }

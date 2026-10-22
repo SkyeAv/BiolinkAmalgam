@@ -1,6 +1,7 @@
 package biolinkamalgam.config
 
 import org.yaml.snakeyaml.Yaml
+
 import scala.jdk.CollectionConverters._
 
 /** File-backed configuration: major taxa, promoted identifier prefixes, resource profiles.
@@ -44,7 +45,9 @@ object Config {
       engine: String = "aria2",
       baseUrl: String = "https://stars.renci.org/var/babel_outputs",
       aria2: Aria2Config = Aria2Config(),
-      jdkConcurrency: Int = 8
+      jdkConcurrency: Int = 8,
+      chunkedConnectionsPerFile: Int = 8,
+      excludeFileRegex: Seq[String] = Seq.empty
   )
 
   def loadDownload(path: os.Path): DownloadConfig = {
@@ -52,11 +55,15 @@ object Config {
     val doc = yamlDoc(path)
     val d = DownloadConfig()
     val a = Option(doc.get("aria2")).map(_.asInstanceOf[java.util.Map[String, AnyRef]]).getOrElse(new java.util.HashMap)
-    def str(m: java.util.Map[String, AnyRef], k: String, dflt: String) = Option(m.get(k)).map(_.toString).getOrElse(dflt)
-    def int(m: java.util.Map[String, AnyRef], k: String, dflt: Int) = Option(m.get(k)).map(_.toString.toInt).getOrElse(dflt)
+    def str(m: java.util.Map[String, AnyRef], k: String, dflt: String) =
+      Option(m.get(k)).map(_.toString).getOrElse(dflt)
+    def int(m: java.util.Map[String, AnyRef], k: String, dflt: Int) =
+      Option(m.get(k)).map(_.toString.toInt).getOrElse(dflt)
     val engine = str(doc, "engine", d.engine)
-    if (engine != "aria2" && engine != "jdk")
-      throw new IllegalArgumentException(s"download engine must be 'aria2' or 'jdk', got '$engine' in $path")
+    if (engine != "aria2" && engine != "jdk" && engine != "jdk-chunked")
+      throw new IllegalArgumentException(
+        s"download engine must be 'aria2', 'jdk', or 'jdk-chunked', got '$engine' in $path"
+      )
     DownloadConfig(
       engine = engine,
       baseUrl = str(doc, "base_url", d.baseUrl),
@@ -70,7 +77,9 @@ object Config {
           .map(_.asInstanceOf[java.util.List[String]].asScala.toSeq)
           .getOrElse(Seq.empty)
       ),
-      jdkConcurrency = int(doc, "jdk_concurrency", d.jdkConcurrency)
+      jdkConcurrency = int(doc, "jdk_concurrency", d.jdkConcurrency),
+      chunkedConnectionsPerFile = int(doc, "chunked_connections_per_file", d.chunkedConnectionsPerFile),
+      excludeFileRegex = stringList(doc, "exclude_file_regex")
     )
   }
 

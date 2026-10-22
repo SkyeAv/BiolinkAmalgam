@@ -1,11 +1,19 @@
 package biolinkamalgam
 
 import biolinkamalgam.config.Config
-import biolinkamalgam.ingest.{Aria2BulkDownloader, BulkDownloader, FixtureSnapshotProvider, JdkBulkDownloader, RemoteSnapshotProvider}
+import biolinkamalgam.ingest.{
+  Aria2BulkDownloader,
+  BulkDownloader,
+  FixtureSnapshotProvider,
+  JdkBulkDownloader,
+  RemoteSnapshotProvider,
+  SnapshotFiles
+}
 import com.sun.net.httpserver.{HttpExchange, HttpServer}
+import utest._
+
 import java.net.InetSocketAddress
 import java.util.concurrent.ConcurrentLinkedQueue
-import utest._
 
 /** Download behavior against an in-JVM fake HTTP server — real HTTP, no network. */
 object DownloadSuite extends TestSuite {
@@ -174,6 +182,31 @@ object DownloadSuite extends TestSuite {
       }
     }
 
+    test("snapshot file selection: split parts replace their whole file, aria2 leftovers ignored") {
+      val names = Seq(
+        "Gene.txt",
+        "Gene.txt.00",
+        "Gene.txt.01",
+        "Disease.txt",
+        "Publication.txt",
+        "Publication.txt.00",
+        "Gene.txt.02.aria2",
+        "aria2-input.txt",
+        ".hidden",
+        "Cell.txt.partial"
+      )
+      assert(
+        SnapshotFiles.select(names) ==
+          Seq("Disease.txt", "Gene.txt.00", "Gene.txt.01", "Publication.txt.00")
+      )
+      assert(
+        SnapshotFiles.select(names, Seq("^Publication\\.txt")) ==
+          Seq("Disease.txt", "Gene.txt.00", "Gene.txt.01")
+      )
+      // a whole file with no split parts is kept
+      assert(SnapshotFiles.select(Seq("umls.txt")) == Seq("umls.txt"))
+    }
+
     test("download config loads defaults and rejects unknown engines") {
       val dir = os.temp.dir(prefix = "biolinkamalgam-dlcfg")
       assert(Config.loadDownload(dir / "missing.yaml") == Config.DownloadConfig())
@@ -181,7 +214,7 @@ object DownloadSuite extends TestSuite {
       val ok = Config.loadDownload(dir / "ok.yaml")
       assert(ok.engine == "jdk" && ok.aria2.connectionsPerFile == 4 && ok.aria2.split == 16)
       os.write(dir / "bad.yaml", "engine: wget\n")
-      val err = intercept[IllegalArgumentException](Config.loadDownload(dir / "bad.yaml"))
+      val err = assertThrows[IllegalArgumentException](Config.loadDownload(dir / "bad.yaml"))
       assert(err.getMessage.contains("wget"))
     }
   }

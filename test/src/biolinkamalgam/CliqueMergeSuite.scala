@@ -80,7 +80,7 @@ object CliqueMergeSuite extends TestSuite {
 
     test("empty preferred names never merge and survive") {
       assert(result.cliques.filter("leader = 'UMLS:C9999999'").count() == 1)
-      assert(result.cliques.count() == 11)
+      assert(result.cliques.count() == 16) // 19 fixture cliques - 3 merged away
     }
   }
 }

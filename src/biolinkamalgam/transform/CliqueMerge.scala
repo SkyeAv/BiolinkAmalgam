@@ -2,7 +2,7 @@ package biolinkamalgam.transform
 
 import biolinkamalgam.config.Config
 import biolinkamalgam.schema.Schemas
-import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.apache.spark.sql.DataFrame
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
 
@@ -27,9 +27,6 @@ object CliqueMerge {
   case class Result(cliques: DataFrame, merges: DataFrame)
 
   def apply(cliques: DataFrame, majorTaxa: Set[String]): Result = {
-    val spark = cliques.sparkSession
-    import spark.implicits._
-
     val scopeUdf = udf { taxa: Seq[String] =>
       Config.taxonScopes(Option(taxa).getOrElse(Seq.empty), majorTaxa)
     }

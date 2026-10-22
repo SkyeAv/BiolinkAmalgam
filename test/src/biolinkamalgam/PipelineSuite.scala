@@ -2,8 +2,8 @@ package biolinkamalgam
 
 import utest._
 
-/** End-to-end local run: mini fixture snapshot + custom TSV -> parquet + reports, with the declarative ingest
-  * filters (category drops + taxon allowlist) active.
+/** End-to-end local run: mini fixture snapshot + custom TSV -> parquet + reports, with the declarative ingest filters
+  * (category drops + taxon allowlist) active.
   */
 object PipelineSuite extends TestSuite {
 
@@ -25,20 +25,20 @@ object PipelineSuite extends TestSuite {
         )
       )
 
-      // 15 fixture cliques - biolink:Publication - biolink:Agent (category drops)
+      // 19 fixture cliques - biolink:Publication - biolink:Agent (category drops)
       // - NCBITaxon:1111111 and NCBITaxon:2222222 cliques (taxon allowlist)
       assert(stages.map(_.name) == Seq("ingest", "merge", "arbitrate", "export"))
-      assert(stages.find(_.name == "ingest").get.rows == 11)
+      assert(stages.find(_.name == "ingest").get.rows == 15)
       // merges: HGNC:9002 and CUSTOM:2 fold into NCBIGene:9001 (the 9004/9005
       // merge is gone — both cliques failed the allowlist)
-      assert(stages.find(_.name == "merge").get.rows == 9)
-      assert(stages.find(_.name == "arbitrate").get.rows == 9)
+      assert(stages.find(_.name == "merge").get.rows == 13)
+      assert(stages.find(_.name == "arbitrate").get.rows == 13)
 
       // the deliverable: one parquet file
       val parquet = out / "biolinkamalgam.parquet"
       assert(os.exists(parquet))
       val back = spark.read.parquet(parquet.toString)
-      assert(back.count() == 9)
+      assert(back.count() == 13)
       assert(back.schema.fieldNames.toSeq == Seq("CURIE", "PREFERRED_NAME", "CLASS", "SYNONYMS"))
       // dropped categories never reach the deliverable
       assert(back.filter("CLASS = 'biolink:Publication'").count() == 0)

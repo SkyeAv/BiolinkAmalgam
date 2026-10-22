@@ -27,3 +27,11 @@ aria2:
 
 # Concurrent files for the jdk engine (one connection per file).
 jdk_concurrency: 8
+
+# Snapshot files never downloaded (regex on the bare file name). Pure
+# bandwidth/disk savings for content that filters.yaml drops anyway; the
+# category filter remains the source of truth.
+exclude_file_regex:
+  # Publication.txt + its 5 split parts: 32GB of PMID/doi/PMC cliques that
+  # drop_categories removes at ingest.
+  - '^Publication\.txt'

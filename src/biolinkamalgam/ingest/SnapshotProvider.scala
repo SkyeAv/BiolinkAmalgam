@@ -1,7 +1,7 @@
 package biolinkamalgam.ingest
 
-import java.net.http.{HttpClient, HttpRequest, HttpResponse}
 import java.net.URI
+import java.net.http.{HttpClient, HttpRequest, HttpResponse}
 
 /** The download/lookup seam. Production uses RemoteSnapshotProvider (async HTTP); tests inject FixtureSnapshotProvider,
   * which serves local fixture files and THROWS on any non-local path — tests are offline by construction, not by
@@ -35,7 +35,8 @@ class FixtureSnapshotProvider(dir: os.Path) extends SnapshotProvider {
 class RemoteSnapshotProvider(
     version: String,
     downloader: BulkDownloader,
-    baseUrl: String = "https://stars.renci.org/var/babel_outputs"
+    baseUrl: String = "https://stars.renci.org/var/babel_outputs",
+    excludeFileRegex: Seq[String] = Seq.empty
 ) extends SnapshotProvider {
 
   private val client = HttpClient.newHttpClient()
@@ -57,8 +58,8 @@ class RemoteSnapshotProvider(
       )
       if (resp.statusCode() != 200)
         throw new RuntimeException(s"listing failed: HTTP ${resp.statusCode()} for $listingUrl")
-      RemoteSnapshotProvider
-        .parseListing(resp.body(), sub)
+      SnapshotFiles
+        .select(RemoteSnapshotProvider.parseListing(resp.body(), sub), excludeFileRegex)
         .map(name => os.sub / sub / name -> s"$listingUrl$name")
     }
 }
@@ -79,4 +80,28 @@ object RemoteSnapshotProvider {
       .filter(name => sub != "synonyms" || name.endsWith(".txt.gz") || name.endsWith(".txt"))
       .toSeq
       .distinct
+}
+
+/** Which snapshot files to fetch and read. BABEL publishes big compendia BOTH whole (`Gene.txt`, 17.8GB) and split
+  * (`Gene.txt.00` .. `Gene.txt.07`, same content). Reading or downloading both would ingest every clique twice, so when
+  * split parts exist the whole file is dropped (parts parallelize better in aria2 and Spark alike). Shared by the
+  * downloader (remote listing) and the compendium reader (local dir), so they can never disagree.
+  */
+object SnapshotFiles {
+
+  private val SplitPart = "^(.+)\\.(\\d{2,})$".r
+
+  /** Data files only: no aria2 control files, partials, input lists, or hidden files. */
+  def isDataFile(name: String): Boolean =
+    !name.startsWith(".") && !name.endsWith(".aria2") && !name.endsWith(".partial") && name != "aria2-input.txt"
+
+  def select(names: Seq[String], excludeRegex: Seq[String] = Seq.empty): Seq[String] = {
+    val data = names.filter(isDataFile)
+    val splitBases = data.collect { case SplitPart(base, _) => base }.toSet
+    val excludes = excludeRegex.map(_.r)
+    data
+      .filterNot(splitBases.contains)
+      .filterNot(n => excludes.exists(_.findFirstIn(n).isDefined))
+      .sorted
+  }
 }
