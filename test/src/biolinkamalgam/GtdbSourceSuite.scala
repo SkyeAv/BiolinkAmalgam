@@ -15,7 +15,7 @@ object GtdbSourceSuite extends TestSuite {
   private lazy val gtdb = new GtdbSource().load(spark, gtdbDir)
 
   private def rowsWhere(df: DataFrame, cond: String): Seq[Map[String, Any]] =
-    df.filter(cond).collect().map(r => df.columns.map(c => c -> Option(r.getAs[Any](c))).toMap).toSeq
+    df.filter(cond).collect().map(r => df.columns.map(c => c -> r.getAs[Any](c)).toMap).toSeq
 
   val tests = Tests {
     test("higher ranks become deduplicated GTDB taxon cliques with display names") {
