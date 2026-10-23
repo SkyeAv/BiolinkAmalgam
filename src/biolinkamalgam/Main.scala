@@ -193,7 +193,7 @@ object Main {
       check("row count > 0", rows > 0, s"rows=$rows")
       check("CURIEs unique", rows - df.select("CURIE").distinct().count() == 0)
 
-      val exploded = df.select("CLASS", explode(col("SYNONYMS")).as("s"))
+      val exploded = df.select(col("CLASS"), explode(col("SYNONYMS")).as("s"))
       check(
         "one-CURIE-per-(class, synonym)",
         exploded.groupBy("CLASS", "s").count().filter(col("count") > 1).count() == 0
