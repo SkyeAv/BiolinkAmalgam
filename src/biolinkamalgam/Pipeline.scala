@@ -71,9 +71,14 @@ object Pipeline {
     }
 
     // [2] MERGE CLIQUES — preferred-name string matching, scoped by (category, taxon).
+    // Every DataFrame consumed by [5] is persisted: export runs long after these
+    // stages, and Spark's ContextCleaner GCs their shuffle files — an unpersisted
+    // side output would recompute from missing shuffle data (exit 56,
+    // FileNotFoundException on shuffle_*.data, seen on the 2026jul22 full run).
     val (merged, merges) = timed("merge") {
       val result = CliqueMerge(cliques, taxa.majorTaxa)
       result.cliques.persist(org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK)
+      result.merges.persist(org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK)
       (result.cliques, result.merges) -> result.cliques.count()
     }
 
@@ -81,6 +86,7 @@ object Pipeline {
     val (output, conflicts) = timed("arbitrate") {
       val result = Uniqueness(merged, taxa.majorTaxa, filters)
       result.output.persist(org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK)
+      result.conflicts.persist(org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK)
       (result.output, result.conflicts) -> result.output.count()
     }
 
@@ -105,6 +111,7 @@ object Pipeline {
       }
     }
 
+    Seq(merged, merges, output, conflicts).foreach(_.unpersist(blocking = false))
     stages.toSeq
   }
 
