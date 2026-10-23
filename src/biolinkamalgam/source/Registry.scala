@@ -9,12 +9,13 @@ import org.apache.spark.sql.{DataFrame, SparkSession}
   */
 object Registry {
 
-  /** All sources for a run: BABEL compendia + synonyms from `babelDir` (if present), plus one CustomTableSource per
-    * file in `customDir` (if present).
+  /** All sources for a run: BABEL compendia + synonyms from `babelDir` (if present), one CustomTableSource per file in
+    * `customDir` (if present), and GTDB metadata from `gtdbDir` (if present).
     */
   def forConfig(
       babelDir: Option[os.Path],
       customDir: Option[os.Path],
+      gtdbDir: Option[os.Path],
       promotePrefixes: Set[String]
   ): Seq[(SynonymSource, os.Path)] = {
     val babel = babelDir.toSeq.flatMap { dir =>
@@ -34,7 +35,9 @@ object Registry {
         .filter(_.last.endsWith(".ndjson"))
         .map(f => new ManualSource(f) -> dir)
     }
-    babel ++ custom ++ manual
+    // GTDB metadata (BABEL PR #978 port): taxon cliques + NCBITaxon species crossrefs.
+    val gtdb = gtdbDir.toSeq.filter(os.exists(_)).map(dir => (new GtdbSource: SynonymSource) -> dir)
+    babel ++ custom ++ manual ++ gtdb
   }
 
   /** Union of all source outputs in canonical clique shape, consolidated by leader: BABEL's compendium and synonym rows

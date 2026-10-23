@@ -45,6 +45,7 @@ object Main {
       profile: Option[String] = None,
       sample: Option[Long] = None,
       ingestCache: Option[String] = None,
+      gtdb: Option[String] = None,
       audit: mainargs.Flag = mainargs.Flag(false),
       simpleExport: mainargs.Flag = mainargs.Flag(false)
   ): Unit = {
@@ -72,6 +73,7 @@ object Main {
         Pipeline.Options(
           babelDir = babelDir,
           customDir = custom.map(d => os.Path(d, os.pwd)),
+          gtdbDir = gtdb.map(d => os.Path(d, os.pwd)),
           outDir = os.Path(out, os.pwd),
           taxaConfig = os.Path(taxaConfig, os.pwd),
           promoteConfig = os.Path(promoteConfig, os.pwd),
@@ -82,7 +84,8 @@ object Main {
           audit = audit.value,
           datasetMeta = Map(
             "babel" -> download.getOrElse(babel.map(d => s"local:$d").getOrElse("none")),
-            "custom" -> custom.getOrElse("none")
+            "custom" -> custom.getOrElse("none"),
+            "gtdb" -> gtdb.getOrElse("none")
           )
         )
       )
@@ -92,7 +95,8 @@ object Main {
         Map(
           "master" -> spark.sparkContext.master,
           "babel" -> babelDir.map(_.toString).getOrElse("none"),
-          "custom" -> custom.getOrElse("none")
+          "custom" -> custom.getOrElse("none"),
+          "gtdb" -> gtdb.getOrElse("none")
         )
       )
       stages.foreach(s => println(f"${s.name}%-12s ${s.rows}%12d rows  ${s.millis}%8d ms"))
@@ -108,6 +112,7 @@ object Main {
       filtersConfig: String = "config/filters.yaml",
       master: Option[String] = None,
       profile: Option[String] = Some("local"),
+      gtdb: Option[String] = None,
       tag: String = ""
   ): Unit = {
     val (resolvedMaster, conf) = sparkSettings(profile, master)
@@ -120,6 +125,7 @@ object Main {
           Pipeline.Options(
             babelDir = babel.map(d => os.Path(d, os.pwd)),
             customDir = custom.map(d => os.Path(d, os.pwd)),
+            gtdbDir = gtdb.map(d => os.Path(d, os.pwd)),
             outDir = tmpOut,
             taxaConfig = os.Path(taxaConfig, os.pwd),
             promoteConfig = os.Path(promoteConfig, os.pwd),

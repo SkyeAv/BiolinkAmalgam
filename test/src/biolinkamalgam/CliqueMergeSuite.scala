@@ -14,6 +14,7 @@ object CliqueMergeSuite extends TestSuite {
     val sources = Registry.forConfig(
       Some(TestSupport.miniSnapshot),
       Some(TestSupport.customDir),
+      None,
       TestSupport.promotePrefixes
     )
     val cliques = Registry.loadAll(spark, sources)

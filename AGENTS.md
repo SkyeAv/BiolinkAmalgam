@@ -2,7 +2,7 @@
 
 A Spark/Scala pipeline that turns BABEL outputs (plus your own ontology tables and
 hand-curated manual entries) into a **single parquet file** publishable as a Hugging
-Face dataset (`SkyeAv/babel-amalgam`), with one hard invariant:
+Face dataset (`SkyeAv/biolink-amalgam`), with one hard invariant:
 
 > Within a given **class × taxon scope**, a synonym belongs to exactly **one** CURIE.
 
@@ -22,8 +22,9 @@ Tablassert's fullmap. One NLP pipeline, one language — never two.
   whole snapshot, HEAD-based skip of completed files).
 - `src/biolinkamalgam/source/` — `SynonymSource` plugin base, BABEL compendia/synonyms
   readers, custom TSV/JSONL ontologies, manual `.ndjson` entries (BABEL PR #887 shape,
-  priority 0 = overrides), and `Registry` (lists sources, unions + consolidates by clique
-  leader; lowest-priority non-null preferred name wins).
+  priority 0 = overrides), `GtdbSource` (GTDB metadata TSVs, BABEL PR #978 port), and
+  `Registry` (lists sources, unions + consolidates by clique leader; lowest-priority
+  non-null preferred name wins).
 - `src/biolinkamalgam/transform/` — `NameKey` (strip/clean only — no stemming),
   `TermGates` (junk admission gates from filters.yaml), `Filters` (category/prefix/taxon
   drops), `CliqueMerge` (preferred-name clique merging), `Uniqueness` (arbitration).
@@ -128,6 +129,9 @@ to `/local_raid1/sgoetz/Code/ISB/BiolinkAmalgam/`, run the gate in tmux.
   sample size) read the parquet cache in seconds. Name-gate edits in `filters.yaml`
   live in the arbitrate stage and never invalidate the cache, so the loop
   "edit a gate/stopword list -> rerun" costs minutes, not an hour.
+- `make run ARGS="run --download 2026jul22 --snapshot-dir <dir> --gtdb <dir> --out out/run1"` —
+  include GTDB taxon cliques (drop GTDB `bac120`/`ar53` metadata `.tsv[.gz]` files into
+  `<dir>`; read by column name, so reduced-column files are fine)
 - `make run ARGS="validate --out <run-dir> --profile wenceslaus"` — pre-publication
   sanity checks (schema, CURIE uniqueness, one-CURIE-per-(class, synonym), dropped
   classes/gates actually absent); exit 1 on any failure
@@ -146,3 +150,10 @@ Drop files into a directory and pass `--custom <dir>`:
 
 Custom sources get priority 0 and outrank BABEL in arbitration. For anything more
 complex, subclass `SynonymSource` and add one line to `Registry.forConfig`.
+
+GTDB (BABEL PR #978 port, `--gtdb <dir>`): every `gtdb_taxonomy` rank becomes a
+`GTDB:`-prefixed `biolink:OrganismTaxon` clique (`GTDB:s__Escherichia_coli`, display
+name "Escherichia coli"). Species with an `ncbi_species_taxid` crossref into their
+`NCBITaxon:` clique as an identifier — AT MOST ONE GTDB species per NCBI species taxid
+(alphabetically first wins); the rest stay GTDB singletons, because two GTDB species
+sharing one taxid must never merge.

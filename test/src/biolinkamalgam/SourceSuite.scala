@@ -16,6 +16,7 @@ object SourceSuite extends TestSuite {
     val sources = Registry.forConfig(
       Some(TestSupport.miniSnapshot),
       Some(TestSupport.customDir),
+      None,
       TestSupport.promotePrefixes
     )
     Registry.loadAll(spark, sources).cache()

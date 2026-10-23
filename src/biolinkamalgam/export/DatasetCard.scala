@@ -32,6 +32,16 @@ object DatasetCard {
       .map(s => f"| ${s.name}%-10s | ${s.rows}%12d | ${s.millis}%8d ms |")
       .mkString("\n")
     val babel = meta.getOrElse("babel", "unknown")
+    val gtdb = meta.getOrElse("gtdb", "none")
+    val gtdbPara =
+      if (gtdb == "none") ""
+      else
+        s"""|GTDB (Genome Taxonomy Database, `$gtdb`) contributes `biolink:OrganismTaxon` cliques:
+          |every GTDB rank becomes a `GTDB:`-prefixed taxon CURIE, and species carrying an
+          |`ncbi_species_taxid` crossref into their `NCBITaxon:` clique (at most one GTDB species per
+          |NCBI species — many-to-one mappings stay singletons).
+          |
+          |""".stripMargin
 
     s"""---
        |pretty_name: BiolinkAmalgam
@@ -55,7 +65,7 @@ object DatasetCard {
        |Biomedical entity synonym cliques built from [BABEL](https://github.com/TranslatorSRI/Babel)
        |compendia and synonyms (snapshot: `$babel`), merged and arbitrated so that
        |**within a (class, taxon scope), a synonym belongs to exactly one CURIE**.
-       |Synonyms are the ORIGINAL strings with junk filtered out (see below); normalization
+       |${gtdbPara}Synonyms are the ORIGINAL strings with junk filtered out (see below); normalization
        |(stemming, level keys) is deliberately left to downstream consumers.
        |
        |## Schema
@@ -91,10 +101,10 @@ object DatasetCard {
        |```python
        |from datasets import load_dataset
        |
-       |ds = load_dataset("SkyeAv/babel-amalgam", split="train")
+       |ds = load_dataset("SkyeAv/biolink-amalgam", split="train")
        |row = ds[0]
        |print(row["CURIE"], row["PREFERRED_NAME"], row["CLASS"])
-       |print([s["NAME"] for s in row["SYNONYMS"]])
+       |print(row["SYNONYMS"])
        |```
        |
        |## Licensing
@@ -102,7 +112,7 @@ object DatasetCard {
        |BABEL aggregates many upstream biomedical resources with heterogeneous licenses
        |(UMLS content in particular requires a UMLS license). This dataset inherits those
        |upstream terms; check the [BABEL license summary](https://github.com/TranslatorSRI/Babel)
-       |for your intended use.
+       |for your intended use.${if (gtdb == "none") "" else "\nGTDB data are CC-BY-SA-4.0 (share-alike); GTDB-derived taxa carry those terms."}
        |""".stripMargin
   }
 

@@ -20,6 +20,7 @@ object TestSupport {
 
   lazy val miniSnapshot: os.Path = resource("/snapshots/mini")
   lazy val customDir: os.Path = resource("/custom")
+  lazy val gtdbDir: os.Path = resource("/gtdb")
   lazy val taxaConfig: os.Path = resource("/config/taxa.yaml")
   lazy val promoteConfig: os.Path = resource("/config/promote_prefixes.yaml")
   lazy val filtersConfig: os.Path = resource("/config/filters.yaml")

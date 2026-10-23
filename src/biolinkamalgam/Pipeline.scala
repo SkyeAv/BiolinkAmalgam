@@ -24,6 +24,7 @@ object Pipeline {
       datasetMeta: Map[String, String] = Map.empty,
       sample: Option[Long] = None,
       ingestCache: Option[os.Path] = None,
+      gtdbDir: Option[os.Path] = None,
       audit: Boolean = false
   )
 
@@ -48,7 +49,7 @@ object Pipeline {
     // read it back in seconds instead of re-parsing 100GB+. Name-level gates
     // live in [3]+[4], so filters.yaml *gate* edits never invalidate the cache.
     val cliques = timed("ingest") {
-      val sources = Registry.forConfig(opts.babelDir, opts.customDir, promotePrefixes)
+      val sources = Registry.forConfig(opts.babelDir, opts.customDir, opts.gtdbDir, promotePrefixes)
       val fresh = () => Filters(Registry.loadAll(spark, sources, opts.sample), filters, taxa.allowlist)
       opts.ingestCache match {
         case None =>
@@ -128,6 +129,8 @@ object Pipeline {
     * change the ingest output (taxa allowlist, promoted prefixes, category/prefix drops). Name-gate lists live in
     * Uniqueness and are deliberately NOT part of the key.
     */
+  private val RegistryVersion = "2" // v2: added the GTDB source (BABEL PR #978 port)
+
   private def fingerprint(
       opts: Options,
       taxa: Config.TaxaConfig,
@@ -153,6 +156,16 @@ object Pipeline {
           put(s"${f.last}:${attrs.size}:${attrs.mtime}")
         }
     }
+    opts.gtdbDir.foreach { dir =>
+      if (os.exists(dir))
+        os.list(dir).filter(os.isFile).sortBy(_.last).foreach { f =>
+          val attrs = os.stat(f)
+          put(s"${f.last}:${attrs.size}:${attrs.mtime}")
+        }
+    }
+    // The cache fingerprint cannot see code: bump this whenever source composition or source
+    // logic changes (adding gtdb was such a change) or stale caches silently keep old data.
+    put(s"registry=$RegistryVersion")
     put(opts.sample.map(_.toString).getOrElse("nosample"))
     put(taxa.allowlist.toSeq.sorted.mkString(","))
     put(promotePrefixes.toSeq.sorted.mkString(","))

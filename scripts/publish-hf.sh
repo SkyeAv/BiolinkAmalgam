@@ -4,7 +4,7 @@
 #
 #   scripts/publish-hf.sh <run-out-dir> [repo-id]
 #
-# repo-id defaults to SkyeAv/babel-amalgam. The token comes from $HF_TOKEN or,
+# repo-id defaults to SkyeAv/biolink-amalgam. The token comes from $HF_TOKEN or,
 # failing that, the standard Hugging Face token file (~/.cache/huggingface/token;
 # huggingface_hub reads it when no token is passed). Never on the command line,
 # never logged. Only uploads the deliverable + card: audit TSVs and the manifest
@@ -12,7 +12,7 @@
 set -eu
 
 OUT="${1:?usage: publish-hf.sh <run-out-dir> [repo-id]}"
-REPO="${2:-SkyeAv/babel-amalgam}"
+REPO="${2:-SkyeAv/biolink-amalgam}"
 
 if [ -z "${HF_TOKEN:-}" ] && [ ! -f "$HOME/.cache/huggingface/token" ]; then
   echo "no HF_TOKEN and no ~/.cache/huggingface/token" >&2

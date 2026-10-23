@@ -18,6 +18,7 @@ object UniquenessSuite extends TestSuite {
     val sources = Registry.forConfig(
       Some(TestSupport.miniSnapshot),
       Some(TestSupport.customDir),
+      None,
       TestSupport.promotePrefixes
     )
     val merged = CliqueMerge(Registry.loadAll(spark, sources), TestSupport.majorTaxa)
