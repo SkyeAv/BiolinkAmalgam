@@ -27,9 +27,10 @@ stemmer.
 |`SYNONYMS` |array<string> |synonyms as originally written, sorted
 |===
 
-Beside it: `conflicts.tsv` (arbitration audit), `merges.tsv` (clique merge audit), `run_manifest.json` (stage
-metrics), and `README.md` — a generated Hugging Face dataset card with frontmatter, schema docs, filter summary, and
-run stats.
+Beside it: `run_manifest.json` (stage metrics) and `README.md` — a generated Hugging Face dataset card with
+frontmatter, schema docs, filter summary, and run stats. Pass `--audit` to also emit `conflicts.tsv`
+(arbitration audit) and `merges.tsv` (clique merge audit); they are impractical at BABEL scale, so they
+default off.
 
 == Build and test
 

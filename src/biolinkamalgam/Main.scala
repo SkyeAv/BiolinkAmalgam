@@ -45,6 +45,7 @@ object Main {
       profile: Option[String] = None,
       sample: Option[Long] = None,
       ingestCache: Option[String] = None,
+      audit: mainargs.Flag = mainargs.Flag(false),
       simpleExport: mainargs.Flag = mainargs.Flag(false)
   ): Unit = {
     val babelDir: Option[os.Path] = (babel, download) match {
@@ -78,6 +79,7 @@ object Main {
           simpleExport = simpleExport.value,
           sample = sample,
           ingestCache = ingestCache.map(p => os.Path(p, os.pwd)),
+          audit = audit.value,
           datasetMeta = Map(
             "babel" -> download.getOrElse(babel.map(d => s"local:$d").getOrElse("none")),
             "custom" -> custom.getOrElse("none")

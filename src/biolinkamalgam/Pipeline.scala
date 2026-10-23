@@ -23,7 +23,8 @@ object Pipeline {
       simpleExport: Boolean = false,
       datasetMeta: Map[String, String] = Map.empty,
       sample: Option[Long] = None,
-      ingestCache: Option[os.Path] = None
+      ingestCache: Option[os.Path] = None,
+      audit: Boolean = false
   )
 
   def run(spark: SparkSession, opts: Options): Seq[Manifest.Stage] = {
@@ -75,22 +76,26 @@ object Pipeline {
     // stages, and Spark's ContextCleaner GCs their shuffle files — an unpersisted
     // side output would recompute from missing shuffle data (exit 56,
     // FileNotFoundException on shuffle_*.data, seen on the 2026jul22 full run).
+    val auditLevel = org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK
     val (merged, merges) = timed("merge") {
       val result = CliqueMerge(cliques, taxa.majorTaxa)
-      result.cliques.persist(org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK)
-      result.merges.persist(org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK)
+      result.cliques.persist(auditLevel)
+      if (opts.audit) result.merges.persist(auditLevel)
       (result.cliques, result.merges) -> result.cliques.count()
     }
 
     // [3]+[4] GATE (junk filters inside) + ARBITRATE — global synonym uniqueness.
     val (output, conflicts) = timed("arbitrate") {
       val result = Uniqueness(merged, taxa.majorTaxa, filters)
-      result.output.persist(org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK)
-      result.conflicts.persist(org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK)
+      result.output.persist(auditLevel)
+      if (opts.audit) result.conflicts.persist(auditLevel)
       (result.output, result.conflicts) -> result.output.count()
     }
 
-    // [5] EXPORT — concurrent sink writes off the persisted arbitrated DataFrame.
+    // [5] EXPORT — the parquet deliverable always; conflicts/merges TSVs only with
+    // --audit. At BABEL scale the full audit is hundreds of GB of lost synonyms —
+    // nobody reviews that, and writing it starved the local executor of heartbeats
+    // (exit 56 on the 2026jul22 run). The small-scale test suite still audits.
     timed("export") {
       val pool = Executors.newFixedThreadPool(4)
       try {
@@ -98,11 +103,15 @@ object Pipeline {
           pool.submit[Unit](() =>
             Parquet.writeSingleFile(output, opts.outDir / "biolinkamalgam.parquet", opts.simpleExport)
           )
-        val conflictsFut = pool.submit[Unit](() => Tsv.writeSingleFile(conflicts, opts.outDir / "conflicts.tsv"))
-        val mergesFut = pool.submit[Unit](() => Tsv.writeSingleFile(merges, opts.outDir / "merges.tsv"))
+        val auditFuts =
+          if (opts.audit)
+            Seq(
+              pool.submit[Unit](() => Tsv.writeSingleFile(conflicts, opts.outDir / "conflicts.tsv")),
+              pool.submit[Unit](() => Tsv.writeSingleFile(merges, opts.outDir / "merges.tsv"))
+            )
+          else Seq.empty
         parquetFut.get()
-        conflictsFut.get()
-        mergesFut.get()
+        auditFuts.foreach(_.get())
         DatasetCard.write(opts.outDir, "biolinkamalgam.parquet", stages.toSeq, opts.datasetMeta)
         () -> output.count()
       } finally {
@@ -111,7 +120,7 @@ object Pipeline {
       }
     }
 
-    Seq(merged, merges, output, conflicts).foreach(_.unpersist(blocking = false))
+    Seq(merged, output, merges, conflicts).foreach(_.unpersist(blocking = false))
     stages.toSeq
   }
 

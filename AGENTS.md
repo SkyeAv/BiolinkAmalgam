@@ -48,8 +48,9 @@ CURIE: string, PREFERRED_NAME: string, CLASS: string, SYNONYMS: array<string>
 ```
 
 One row per surviving clique leader. A clique whose names all lost arbitration (or failed
-the gates) still gets a row with empty SYNONYMS. Beside it: `conflicts.tsv`, `merges.tsv`,
-`run_manifest.json`, and a generated `README.md` HF dataset card.
+the gates) still gets a row with empty SYNONYMS. Beside it: `run_manifest.json` and a
+generated `README.md` HF dataset card. `conflicts.tsv` + `merges.tsv` (full audit) are
+opt-in via `--audit` — at BABEL scale they are hundreds of GB and unwritable in practice.
 
 ## Invariants and rules (do not break)
 

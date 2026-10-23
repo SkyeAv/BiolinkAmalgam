@@ -46,12 +46,24 @@ object PipelineSuite extends TestSuite {
       assert(back.filter("CURIE = 'PMID:99999999'").count() == 0)
       assert(back.filter("CURIE = 'UMLS:C8888888'").count() == 0)
 
-      // audit reports + the HF dataset card
+      // HF dataset card always; audit TSVs only with --audit
       assert(os.exists(out / "README.md"))
       assert(os.read(out / "README.md").contains("size_categories:"))
-      val conflicts = os.read.lines(out / "conflicts.tsv")
+      assert(!os.exists(out / "conflicts.tsv"))
+      assert(!os.exists(out / "merges.tsv"))
+
+      Pipeline.run(spark, Pipeline.Options(
+        babelDir = Some(TestSupport.miniSnapshot),
+        customDir = Some(TestSupport.customDir),
+        outDir = out / "audit",
+        taxaConfig = TestSupport.taxaConfig,
+        promoteConfig = TestSupport.promoteConfig,
+        filtersConfig = TestSupport.filtersConfig,
+        audit = true
+      ))
+      val conflicts = os.read.lines(out / "audit" / "conflicts.tsv")
       assert(conflicts.length == 3) // header + glucose + shared alias
-      val merges = os.read.lines(out / "merges.tsv")
+      val merges = os.read.lines(out / "audit" / "merges.tsv")
       assert(merges.length == 3) // header + 2 merges
     }
 
