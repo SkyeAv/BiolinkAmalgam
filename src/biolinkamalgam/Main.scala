@@ -174,8 +174,7 @@ object Main {
   ): Unit = {
     val (resolvedMaster, conf) = sparkSettings(profile, master)
     val spark = SparkSupport.session("biolinkamalgam-validate", resolvedMaster.orElse(Some("local[*]")), conf)
-    import spark.implicits._
-    import org.apache.spark.sql.functions.{col, explode, lower}
+    import org.apache.spark.sql.functions.{col, desc, explode, lower}
     var failed = false
     def check(label: String, ok: Boolean, detail: String = ""): Unit = {
       println(s"${if (ok) "ok  " else "FAIL"}  $label%-48s $detail")
@@ -215,7 +214,7 @@ object Main {
       )
 
       println("\ntop classes:")
-      df.groupBy("CLASS").count().orderBy($"count".desc).show(15, false)
+      df.groupBy("CLASS").count().orderBy(desc("count")).show(15, false)
       println(s"synonyms seen under more than one CLASS (legal across classes): " +
         exploded.groupBy("s").count().filter(col("count") > 1).count())
 
