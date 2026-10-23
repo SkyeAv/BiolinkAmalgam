@@ -68,7 +68,7 @@ object GtdbSourceSuite extends TestSuite {
       )
       val ecoli = cliques.filter("leader = 'NCBITaxon:562'").collect()
       assert(ecoli.length == 1)
-      assert(ecoli.head.getAs[Long]("identifier_count") == 1)
+      assert(ecoli.head.getAs[Int]("identifier_count") == 1)
     }
   }
 }

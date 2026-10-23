@@ -45,8 +45,8 @@ class GtdbSource extends SynonymSource("gtdb", priority = 10) {
     // Species -> NCBI mapping: distinct pairs; a species seen with several taxids across genomes (rare GTDB
     // reassignments) deterministically keeps the smallest.
     val species = labeled.filter(col("rank") === "s").select("curie", "display", "ncbi_species_taxid").distinct
-    val resolved = species
-      .withColumn("taxid", firstTaxid(col("ncbi_species_taxid")))
+    val spPairs = species.withColumn("taxid", firstTaxid(col("ncbi_species_taxid")))
+    val resolved = spPairs
       .filter(col("taxid").isNotNull)
       .groupBy("curie", "display")
       .agg(min("taxid").as("taxid"))
@@ -55,7 +55,7 @@ class GtdbSource extends SynonymSource("gtdb", priority = 10) {
     val ranked = resolved.withColumn("rn", row_number().over(win))
     val crossref = ranked.filter(col("rn") === 1)
     val taxidSingletons = ranked.filter(col("rn") > 1).select("curie", "display")
-    val noTaxid = species.filter(col("ncbi_species_taxid").isNull).select("curie", "display")
+    val noTaxid = spPairs.filter(col("taxid").isNull).select("curie", "display")
     val higherRanks = labeled.filter(col("rank") =!= "s").select("curie", "display").distinct
 
     val singletonTaxa = taxidSingletons.unionByName(noTaxid).unionByName(higherRanks)
