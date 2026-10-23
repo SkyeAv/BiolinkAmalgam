@@ -214,8 +214,7 @@ object Main {
           .count() == 0
       )
 
-      println("
-top classes:")
+      println("\ntop classes:")
       df.groupBy("CLASS").count().orderBy($"count".desc).show(15, false)
       println(s"synonyms seen under more than one CLASS (legal across classes): " +
         exploded.groupBy("s").count().filter(col("count") > 1).count())
