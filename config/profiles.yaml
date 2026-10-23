@@ -29,7 +29,7 @@ profiles:
     spark.sql.adaptive.enabled: "true"
     spark.sql.adaptive.coalescePartitions.enabled: "true"
     spark.sql.files.maxPartitionBytes: "256m"
-    spark.local.dir: "/local_raid1/sgoetz/TEMPDIR/biolinkamalgam-spark"
+    spark.local.dir: "/home/sgoetz/spark-local-biolinkamalgam" # /home has 324G free; /local_raid1 runs at 98%
     spark.memory.fraction: "0.7"
 
   # Example remote standalone cluster (not used by default):
