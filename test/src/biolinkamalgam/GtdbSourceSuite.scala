@@ -1,6 +1,7 @@
 package biolinkamalgam
 
 import biolinkamalgam.source.{GtdbSource, Registry}
+import org.apache.spark.sql.DataFrame
 import utest._
 
 /** GTDB metadata ingest (BABEL PR #978 port): rank cliques, NCBITaxon species crossrefs, the many-to-one guard, and
@@ -46,8 +47,7 @@ object GtdbSourceSuite extends TestSuite {
     test("many-to-one guard: the alphabetically-first species crossrefs, the rest stay singletons") {
       // GTDB:s__Escherichia_coli and GTDB:s__Escherichia_coli_B both carry ncbi_species_taxid 562.
       // Both must NOT land in NCBITaxon:562; the loser keeps its own GTDB clique.
-      val ncbiIdentifiers = rowsWhere(gtdb, "leader = 'NCBITaxon:562'").head("identifiers").getOrElse(Seq.empty)
-      assert(ncbiIdentifiers == Seq("GTDB:s__Escherichia_coli"))
+      assert(rowsWhere(gtdb, "leader = 'NCBITaxon:562'").head("identifiers") == Seq("GTDB:s__Escherichia_coli"))
       val loser = rowsWhere(gtdb, "leader = 'GTDB:s__Escherichia_coli_B'")
       assert(loser.length == 1)
       assert(loser.head("preferred_name") == "Escherichia coli B")
