@@ -13,6 +13,9 @@ The dataset ships *original strings* with junk filtered out. Normalization (stem
 NOT done here — downstream consumers (e.g. Tablassert's fullmap DB) own the real NLP. This codebase contains no
 stemmer.
 
+Latest published build: https://huggingface.co/datasets/SkyeAv/babel-amalgam[SkyeAv/babel-amalgam] (public HF
+dataset; snapshot `2026jul22`, 138,885,412 cliques). Publish a fresh run with `make publish`.
+
 == Output
 
 `biolinkamalgam.parquet`, one row per surviving clique leader:
