@@ -121,6 +121,15 @@ to `/local_raid1/sgoetz/Code/ISB/BiolinkAmalgam/`, run the gate in tmux.
   bulk-download a BABEL snapshot first (aria2, resumable; NOT into out/, mill wipes it)
 - `make run ARGS="run --babel <dir> --sample 200000 --out out/sample"` — fast iteration:
   caps raw rows per source before parsing
+- `make run ARGS="run --babel <dir> --ingest-cache data/ingest-cache --out out/run1"` —
+  materialize the consolidated clique table once; reruns with the same snapshot files +
+  ingest-affecting config (taxa allowlist, promoted prefixes, category/prefix drops,
+  sample size) read the parquet cache in seconds. Name-gate edits in `filters.yaml`
+  live in the arbitrate stage and never invalidate the cache, so the loop
+  "edit a gate/stopword list -> rerun" costs minutes, not an hour.
+- `make run ARGS="validate --out <run-dir> --profile wenceslaus"` — pre-publication
+  sanity checks (schema, CURIE uniqueness, one-CURIE-per-(class, synonym), dropped
+  classes/gates actually absent); exit 1 on any failure
 - `make run ARGS="benchDownload --url <big-file-url> --out /tmp/dlbench"` — time aria2 vs
   jdk-chunked vs jdk on a real file (evidence for `config/download.yaml`)
 
