@@ -37,7 +37,9 @@ object GtdbSourceSuite extends TestSuite {
       val ncbi = rowsWhere(gtdb, "leader = 'NCBITaxon:562'")
       assert(ncbi.length == 1)
       assert(ncbi.head("preferred_name") == "Escherichia coli")
-      assert(ncbi.head("names") == Seq("Escherichia coli"))
+      // display label + the GTDB CURIE itself (the export schema has no identifiers
+      // column, so the crossref must ride in SYNONYMS to be visible downstream)
+      assert(ncbi.head("names") == Seq("Escherichia coli", "GTDB:s__Escherichia_coli"))
       assert(ncbi.head("identifiers") == Seq("GTDB:s__Escherichia_coli"))
 
       val subtilis = rowsWhere(gtdb, "leader = 'NCBITaxon:1423'")

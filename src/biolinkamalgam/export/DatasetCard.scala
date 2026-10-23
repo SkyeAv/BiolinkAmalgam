@@ -38,8 +38,8 @@ object DatasetCard {
       else
         s"""|GTDB (Genome Taxonomy Database, `$gtdb`) contributes `biolink:OrganismTaxon` cliques:
           |every GTDB rank becomes a `GTDB:`-prefixed taxon CURIE, and species carrying an
-          |`ncbi_species_taxid` crossref into their `NCBITaxon:` clique (at most one GTDB species per
-          |NCBI species — many-to-one mappings stay singletons).
+          |`ncbi_species_taxid` crossref into their `NCBITaxon:` clique (visible as a `GTDB:`-prefixed
+          |synonym; at most one GTDB species per NCBI species — many-to-one mappings stay singletons).
           |
           |""".stripMargin
 

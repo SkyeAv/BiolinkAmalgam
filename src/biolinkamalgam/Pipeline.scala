@@ -129,7 +129,7 @@ object Pipeline {
     * change the ingest output (taxa allowlist, promoted prefixes, category/prefix drops). Name-gate lists live in
     * Uniqueness and are deliberately NOT part of the key.
     */
-  private val RegistryVersion = "2" // v2: added the GTDB source (BABEL PR #978 port)
+  private val RegistryVersion = "3" // v2: GTDB source; v3: GTDB crossref CURIEs surface as NCBITaxon synonyms
 
   private def fingerprint(
       opts: Options,

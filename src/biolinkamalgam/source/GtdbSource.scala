@@ -11,7 +11,8 @@ import org.apache.spark.sql.{DataFrame, SparkSession}
   * Every rank token becomes a GTDB clique: CURIE `GTDB:s__Escherichia_coli` (spaces to underscores, Bioregistry
   * form), preferred name the display label ("Escherichia coli"). Species carrying an `ncbi_species_taxid` crossref
   * into the biolink taxon space: the GTDB CURIE becomes an identifier of the `NCBITaxon:<taxid>` clique (folding in
-  * via the Registry's by-leader union) and the species label joins that clique's names.
+  * via the Registry's by-leader union) AND a `GTDB:`-prefixed synonym of it, since the export schema carries no
+  * identifiers column and the crossref must be visible in the parquet (same mechanism as INCHIKEY promotion).
   *
   * Many-to-one guard (PR #978 parity): several GTDB species can share one NCBI species taxid, and the
   * no-conflation invariant forbids merging them. The guard is DETERMINISTIC here — the alphabetically-first species
@@ -76,7 +77,7 @@ class GtdbSource extends SynonymSource("gtdb", priority = 10) {
           col("display").as("preferred_name"),
           lit("biolink:OrganismTaxon").as("category"),
           array().cast("array<string>").as("taxa"),
-          array(col("display")).as("names"),
+          array(col("display"), col("curie")).as("names"),
           array(col("curie")).as("identifiers"),
           lit(1).as("identifier_count")
         )

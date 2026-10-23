@@ -154,6 +154,7 @@ complex, subclass `SynonymSource` and add one line to `Registry.forConfig`.
 GTDB (BABEL PR #978 port, `--gtdb <dir>`): every `gtdb_taxonomy` rank becomes a
 `GTDB:`-prefixed `biolink:OrganismTaxon` clique (`GTDB:s__Escherichia_coli`, display
 name "Escherichia coli"). Species with an `ncbi_species_taxid` crossref into their
-`NCBITaxon:` clique as an identifier — AT MOST ONE GTDB species per NCBI species taxid
-(alphabetically first wins); the rest stay GTDB singletons, because two GTDB species
-sharing one taxid must never merge.
+`NCBITaxon:` clique as an identifier and as a `GTDB:`-prefixed SYNONYM (the export schema
+has no identifiers column, so the crossref rides in SYNONYMS like INCHIKEY promotion) —
+AT MOST ONE GTDB species per NCBI species taxid (alphabetically first wins); the rest
+stay GTDB singletons, because two GTDB species sharing one taxid must never merge.
