@@ -39,8 +39,11 @@ def make_api():
             return api
         except Exception as e:
             print(f"auth: HF_TOKEN rejected ({str(e)[:60]}); falling back to token file")
-    api = HfApi()  # reads ~/.cache/huggingface/token
-    api.whoami()   # fail loudly here if neither works
+    # HfApi() would pick up the stale HF_TOKEN env again; read the file explicitly
+    tok_file = os.path.expanduser("~/.cache/huggingface/token")
+    with open(tok_file) as f:
+        api = HfApi(token=f.read().strip())
+    api.whoami()  # fail loudly here if neither works
     print("auth: token file")
     return api
 
