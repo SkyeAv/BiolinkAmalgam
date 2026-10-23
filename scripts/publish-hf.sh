@@ -27,8 +27,24 @@ import os, sys
 from huggingface_hub import HfApi
 
 out, repo = sys.argv[1], sys.argv[2]
-# token=None makes huggingface_hub fall back to the cached token file
-api = HfApi(token=os.environ.get("HF_TOKEN") or None)
+# Prefer $HF_TOKEN; if it is set but stale (401), fall back to the cached token
+# file. Whichever source wins is named, secrets are never printed.
+def make_api():
+    tok = os.environ.get("HF_TOKEN")
+    if tok:
+        api = HfApi(token=tok)
+        try:
+            api.whoami()
+            print("auth: HF_TOKEN")
+            return api
+        except Exception as e:
+            print(f"auth: HF_TOKEN rejected ({str(e)[:60]}); falling back to token file")
+    api = HfApi()  # reads ~/.cache/huggingface/token
+    api.whoami()   # fail loudly here if neither works
+    print("auth: token file")
+    return api
+
+api = make_api()
 api.create_repo(repo, repo_type="dataset", private=False, exist_ok=True)
 api.upload_folder(
     folder_path=out,
