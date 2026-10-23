@@ -39,3 +39,23 @@ profiles:
   #   spark.executor.cores: "8"
   #   spark.cores.max: "256"
   #   spark.sql.shuffle.partitions: "1024"
+
+  wenceslaus-cluster:
+    # Two-node standalone cluster (no sudo, fat jars only): master + 64-core
+    # worker on wenceslaus, 36-core worker on hypatia. Per-node Spark scratch
+    # via SPARK_LOCAL_DIRS at worker launch (conf spark.local.dir would be
+    # cluster-wide). Data parity path: /users/sgoetz/biolinkamalgam/cache/2026jul22
+    # exists on BOTH hosts (local disk on wenceslaus, NFS on hypatia) — rsync it
+    # after every cache rebuild.
+    master: "spark://wenceslaus:7077"
+    spark.driver.memory: "140g"
+    spark.driver.host: "wenceslaus"
+    spark.driver.bindAddress: "0.0.0.0"
+    spark.jars: "/users/sgoetz/biolinkamalgam/out.jar"
+    spark.executor.memory: "70g"
+    spark.executor.cores: "32"
+    spark.cores.max: "96"
+    spark.sql.shuffle.partitions: "512"
+    spark.sql.adaptive.enabled: "true"
+    spark.sql.adaptive.coalescePartitions.enabled: "true"
+    spark.memory.fraction: "0.7"
