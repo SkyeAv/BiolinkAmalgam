@@ -212,7 +212,7 @@ object Main {
         "Publication/Agent absent",
         df.filter(col("CLASS").isin("biolink:Publication", "biolink:Agent")).count() == 0
       )
-      val numeric = exploded.filter("s rlike '^[+-]?([0-9]+\\.?[0-9]*|\\.[0-9]+)([eE][+-]?[0-9]+)?$$'")
+      val numeric = exploded.filter(col("s").rlike("^[+-]?([0-9]+\\.?[0-9]*|\\.[0-9]+)([eE][+-]?[0-9]+)?$"))
       val numericCount = numeric.count()
       val numericSample = numeric.limit(5).collect().map(_.getAs[String]("s")).mkString(", ")
       check("no numeric-only synonyms", numericCount == 0, s"$numericCount; e.g. $numericSample")
