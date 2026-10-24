@@ -30,6 +30,22 @@ object Config {
     val empty: FilterConfig = FilterConfig(Set.empty, Map.empty, Seq.empty, Set.empty, Seq.empty, Seq.empty)
   }
 
+  /** Declarative synonym-quality thresholds (config/synonym_scrub.yaml). Every number here decides which synonyms
+    * get dropped as "probably incorrect", so the yaml carries a why-comment per entry and the scrub tool runs in a
+    * report-only mode first: inspect the evidence BEFORE trusting the thresholds on real data.
+    */
+  case class ScrubConfig(
+      minCliqueMembers: Int,
+      cohesionFloor: Double,
+      hubCliques: Int,
+      crossEnabled: Boolean,
+      crossTokenDfCap: Long,
+      crossSimilarity: Double,
+      crossMargin: Double,
+      minNameLen: Int,
+      sampleExamples: Int
+  ) extends Serializable
+
   /** aria2c tuning (config/download.yaml `aria2:`). */
   case class Aria2Config(
       binary: String = "aria2c",
@@ -150,6 +166,27 @@ object Config {
       deadTerms = stringList(doc, "dead_terms").map(_.toLowerCase(java.util.Locale.ROOT)).toSet,
       excludeNameRegex = stringList(doc, "exclude_name_regex"),
       excludeCurieRegex = stringList(doc, "exclude_curie_regex")
+    )
+  }
+
+  /** Synonym-quality thresholds; absent file or key = the documented default. */
+  def loadScrub(path: os.Path): ScrubConfig = {
+    val d = ScrubConfig.empty
+    if (!os.exists(path)) return d
+    val doc = yamlDoc(path)
+    def intOpt(key: String, default: Int): Int = Option(doc.get(key)).map(_.toString.toInt).getOrElse(default)
+    def dblOpt(key: String, default: Double): Double = Option(doc.get(key)).map(_.toString.toDouble).getOrElse(default)
+    def boolOpt(key: String, default: Boolean): Boolean = Option(doc.get(key)).map(_.toString.toBoolean).getOrElse(default)
+    d.copy(
+      minCliqueMembers = intOpt("min_clique_members", d.minCliqueMembers),
+      cohesionFloor = dblOpt("cohesion_floor", d.cohesionFloor),
+      hubCliques = intOpt("hub_cliques", d.hubCliques),
+      crossEnabled = boolOpt("cross_enabled", d.crossEnabled),
+      crossTokenDfCap = intOpt("cross_token_df_cap", d.crossTokenDfCap.toInt).toLong,
+      crossSimilarity = dblOpt("cross_similarity", d.crossSimilarity),
+      crossMargin = dblOpt("cross_margin", d.crossMargin),
+      minNameLen = intOpt("min_name_len", d.minNameLen),
+      sampleExamples = intOpt("sample_examples", d.sampleExamples)
     )
   }
 

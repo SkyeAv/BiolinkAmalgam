@@ -10,6 +10,8 @@ import biolinkamalgam.ingest.{
   RemoteSnapshotProvider
 }
 import biolinkamalgam.spark.SparkSupport
+import biolinkamalgam.transform.SynonymScrub
+import org.apache.spark.sql.functions.{rand, row_number}
 import mainargs.main
 
 /** CLI entry point. Subcommands: run — full pipeline: ingest → merge → arbitrate → export bench — timed pipeline run
@@ -239,6 +241,48 @@ object Main {
         sys.exit(1)
       }
       println("VALIDATION PASSED")
+    } finally spark.stop()
+  }
+
+  /** Synonym-quality scrub: flags probably-incorrect synonyms in a finished run. Report first — write
+    * <out>/scrub-report/ (per-signal counts + random evidence samples); only --apply also writes the scrubbed
+    * dataset as <out>/biolinkamalgam-scrubbed/. Review the samples before trusting the thresholds.
+    */
+  @main def scrub(
+      out: String,
+      scrubConfig: String = "config/synonym_scrub.yaml",
+      master: Option[String] = None,
+      profile: Option[String] = None
+  ): Unit = {
+    val (resolvedMaster, conf) = sparkSettings(profile, master)
+    val spark = SparkSupport.session("biolinkamalgam-scrub", resolvedMaster, conf)
+    try {
+      val dir = os.Path(out, os.pwd)
+      val df = spark.read.parquet((dir / "biolinkamalgam.parquet").toString)
+      val cfg = Config.loadScrub(os.Path(scrubConfig, os.pwd))
+      val flagged = SynonymScrub.flags(df, cfg)
+        .persist(org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK)
+      val counts = flagged.groupBy("signal").count().orderBy("signal")
+      counts.show(false)
+      val total = flagged.count()
+      println(s"flagged synonyms: $total of ${df.count()} cliques")
+
+      val reportDir = dir / "scrub-report"
+      os.makeDir.all(reportDir)
+      val sampled = flagged
+        .withColumn("rn", row_number().over(
+          org.apache.spark.sql.expressions.Window.partitionBy(col("signal")).orderBy(rand(42L))))
+        .filter(col("rn") <= cfg.sampleExamples)
+        .drop("rn")
+      counts.coalesce(1).write.mode("overwrite").option("header", "true").option("sep", "\t")
+        .csv((reportDir / "counts").toString)
+      sampled.coalesce(1).write.mode("overwrite").option("header", "true").option("sep", "\t")
+        .csv((reportDir / "samples").toString)
+      println(s"report: $reportDir")
+
+      val scrubbedDir = dir / "biolinkamalgam-scrubbed.parquet"
+      SynonymScrub.scrubbed(df, flagged).write.mode("overwrite").parquet(scrubbedDir.toString)
+      println(s"scrubbed parquet: $scrubbedDir")
     } finally spark.stop()
   }
 

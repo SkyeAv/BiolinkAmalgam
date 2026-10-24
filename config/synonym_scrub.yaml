@@ -1,0 +1,33 @@
+# Synonym-quality thresholds (why-comment per entry). Every number here drops
+# synonyms judged "probably incorrect"; the scrub tool has a report-only mode —
+# ALWAYS review its evidence on a real run before tightening or trusting these.
+
+# Cohesion outlier: cliques with fewer members than this are skipped (a 2-name
+# clique gives the outlier check nothing to compare against).
+min_clique_members: 4
+
+# A synonym whose best character-trigram Jaccard against its own clique's OTHER
+# members is below this is a cohesion outlier (classic UMLS junk: an unrelated
+# label glued into a gene/chemical clique). 0.22 keeps legit short codes and
+# naming-system variants; true foreign labels score near 0.
+cohesion_floor: 0.22
+
+# Hub strings: a synonym attached to at least this many DISTINCT cliques within
+# one class (any taxon scope) is generic vocabulary pollution, not a name.
+hub_cliques: 8
+
+# Cross-clique affinity: a synonym whose trigram similarity to a FOREIGN clique's
+# preferred name (same class) clears cross_similarity AND beats its own-clique
+# cohesion by cross_margin is assigned to the wrong clique. Candidate foreign
+# cliques come from a shared-token inverted index, capped at this document
+# frequency per (class, token) so stopwords cannot explode the join.
+cross_enabled: true
+cross_token_df_cap: 2000
+cross_similarity: 0.72
+cross_margin: 0.2
+
+# Names shorter than this skip cohesion/cross checks (trigrams are meaningless).
+min_name_len: 4
+
+# Random examples per signal written into the scrub report.
+sample_examples: 200
