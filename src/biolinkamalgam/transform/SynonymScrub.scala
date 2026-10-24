@@ -111,7 +111,7 @@ object SynonymScrub {
 
     // band id b holds hashes [b*BandSize, (b+1)*BandSize): identical full band => candidate pair
     val synBands = (0 until NumHashes / BandSize).map { b =>
-      synonyms.select(col("CURIE").as("syn_curie"), col("CLASS").as("sclass"), col("synonym"), col("grams"),
+      synonyms.select(col("CURIE").as("syn_curie"), col("CLASS").as("sclass"), col("synonym"), col("grams").as("s_grams"),
         array((0 until BandSize).map(k => col("sig")(b * BandSize + k)): _*).as("band")).withColumn("b", lit(b))
     }.reduce(_ unionByName _)
 
@@ -123,12 +123,12 @@ object SynonymScrub {
     val candidates = synBands
       .join(prefBands, Seq("b", "band"))
       .filter(col("sclass") === col("pclass") && col("syn_curie") =!= col("pref_curie"))
-      .select(col("sclass"), col("syn_curie"), col("synonym"), col("pref_curie"), col("grams"), col("pname"))
+      .select(col("sclass"), col("syn_curie"), col("synonym"), col("pref_curie"), col("s_grams"), col("pname"))
       .distinct()
 
     val gramUdf = udf((a: Seq[String], p: String) => jaccard(a, trigrams(p)))
     val best = candidates
-      .withColumn("sim", gramUdf(col("grams"), col("pname")))
+      .withColumn("sim", gramUdf(col("s_grams"), col("pname")))
       .filter(col("sim") >= cfg.crossSimilarity)
       .groupBy(col("sclass"), col("syn_curie"), col("synonym"))
       .agg(max(struct(col("sim"), col("pref_curie"))).as("bestm"))
