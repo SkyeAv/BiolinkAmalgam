@@ -46,6 +46,20 @@ object Config {
       sampleExamples: Int
   ) extends Serializable
 
+  object ScrubConfig {
+    val empty: ScrubConfig = ScrubConfig(
+      minCliqueMembers = 4,
+      cohesionFloor = 0.22,
+      hubCliques = 8,
+      crossEnabled = true,
+      crossTokenDfCap = 2000L,
+      crossSimilarity = 0.72,
+      crossMargin = 0.2,
+      minNameLen = 4,
+      sampleExamples = 200
+    )
+  }
+
   /** aria2c tuning (config/download.yaml `aria2:`). */
   case class Aria2Config(
       binary: String = "aria2c",

@@ -11,7 +11,7 @@ import biolinkamalgam.ingest.{
 }
 import biolinkamalgam.spark.SparkSupport
 import biolinkamalgam.transform.SynonymScrub
-import org.apache.spark.sql.functions.{rand, row_number}
+import org.apache.spark.sql.functions.{col, rand, row_number}
 import mainargs.main
 
 /** CLI entry point. Subcommands: run — full pipeline: ingest → merge → arbitrate → export bench — timed pipeline run

@@ -15,12 +15,17 @@ import org.apache.spark.sql.DataFrame
   *     pollution, not a name. Cross-class recurrence stays legal (gene/chemical duals are real).
   *   - `cross` — a synonym whose trigram similarity to a FOREIGN clique's preferred name (same class, different
   *     CURIE) clears `cross_similarity` AND beats its own-clique cohesion by `cross_margin`: assigned to the wrong
-  *     clique. Candidate pairs come from MinHash LSH over hashed trigrams — all-pairs is impossible at 139M cliques.
+  *     clique. Candidate pairs come from a deterministic MinHash banding LSH over trigrams (24 hashes, 12 bands of 2
+  *     — catches Jaccard >= 0.72 pairs with ~1.0 probability; exact Jaccard confirms) — all-pairs is impossible at
+  *     139M cliques, and spark-mllib is deliberately not in the fat jar.
   *
   * The result's `report` is the evidence: one row per flagged synonym with signal + numbers. Review it before
   * applying; `scrubbed` is the input minus every flagged (CURIE, synonym).
   */
 object SynonymScrub {
+
+  private val NumHashes = 24
+  private val BandSize = 2
 
   /** (synonym, best) pairs per clique: best = max trigram Jaccard against any OTHER member. */
   private val cohesionUdf = udf { synonyms: Seq[String] =>
@@ -41,8 +46,17 @@ object SynonymScrub {
 
   def jaccard(a: Seq[String], b: Seq[String]): Double = {
     if (a.isEmpty || b.isEmpty) return 0.0
-    val (A, B) = (a.toSet, b.toSet)
-    A.intersect(B).size.toDouble / A.union(B).size
+    val (av, bv) = (a.toSet, b.toSet)
+    av.intersect(bv).size.toDouble / av.union(bv).size
+  }
+
+  /** One MinHash of the trigram set: the minimum MurmurHash under seed `seed`. Deterministic across runs/JVMs. */
+  private val minHashUdf = udf { grams: Seq[String] =>
+    if (grams.isEmpty) Array.fill(NumHashes)(Int.MinValue)
+    else
+      Array.tabulate(NumHashes) { i =>
+        grams.iterator.map(g => scala.util.hashing.MurmurHash3.stringHash(g, i * 1000003)).min
+      }
   }
 
   /** Per-synonym own-clique cohesion over ALL cliques (small cliques included; the cross signal needs it). */
@@ -77,53 +91,56 @@ object SynonymScrub {
     Seq(cohesion, hub, cross).reduce(_ unionByName _)
   }
 
-  /** MinHash LSH over hashed trigrams: synonym x same-class preferred name pairs, similarity >= cross_similarity,
-    * foreign CURIE, and the foreign match beats own cohesion by cross_margin (small cliques: cohesion reads 0, so a
-    * confidently foreign name can still fire).
+  /** MinHash banding LSH: synonyms x same-class preferred-name candidates, exact-Jaccard confirm, foreign CURIE, and
+    * the foreign match must beat own cohesion by cross_margin (small cliques: cohesion reads 0, so a confidently
+    * foreign name can still fire).
     */
   private def crossFlags(df: DataFrame, cfg: ScrubConfig): DataFrame = {
-    import org.apache.spark.ml.feature.{HashingTF, MinHashLSH}
-
     val tg = udf((s: String) => trigrams(s).toArray)
-    val keyed = df.withColumn("row_id", monotonically_increasing_id())
 
-    val synonyms = keyed
-      .select(col("row_id"), col("CURIE"), col("CLASS"), explode(col("SYNONYMS")).as("synonym"))
+    val synonyms = df
+      .select(col("CURIE"), col("CLASS"), explode(col("SYNONYMS")).as("synonym"))
       .filter(length(col("synonym")) >= cfg.minNameLen)
-    val preferred = keyed
-      .select(col("row_id").as("pref_row"), col("CURIE").as("pref_curie"), col("CLASS").as("pclass"),
-        col("PREFERRED_NAME").as("pname"))
+      .withColumn("grams", tg(col("synonym")))
+      .withColumn("sig", minHashUdf(col("grams")))
+    val preferred = df
+      .select(col("CURIE").as("pref_curie"), col("CLASS").as("pclass"), col("PREFERRED_NAME").as("pname"))
       .filter(length(col("pname")) >= cfg.minNameLen)
+      .withColumn("grams", tg(col("pname")))
+      .withColumn("sig", minHashUdf(col("grams")))
 
-    val hashing = new HashingTF().setInputCol("trigrams").setOutputCol("features").setBinary(true).setNumFeatures(1 << 18)
-    val synFeats = hashing.transform(synonyms.withColumn("trigrams", tg(col("synonym"))))
-      .select(col("row_id"), col("CURIE"), col("CLASS"), col("synonym"), col("features"))
-    val prefFeats = hashing.transform(preferred.withColumn("trigrams", tg(col("pname"))))
-      .select(col("pref_row"), col("pref_curie"), col("pclass"), col("features"))
+    // band id b holds hashes [b*BandSize, (b+1)*BandSize): identical full band => candidate pair
+    val synBands = (0 until NumHashes / BandSize).map { b =>
+      synonyms.select(col("CURIE").as("syn_curie"), col("CLASS").as("sclass"), col("synonym"), col("grams"),
+        array((0 until BandSize).map(k => col("sig")(b * BandSize + k)): _*).as("band")).withColumn("b", lit(b))
+    }.reduce(_ unionByName _)
 
-    val model = new MinHashLSH().setNumHashTables(12).setInputCol("features").setOutputCol("hashes").fit(prefFeats)
-    model
-      .approxSimilarityJoin(synFeats, prefFeats, 1.0 - cfg.crossSimilarity, "j")
-      .select(
-        col("j.datasetA.row_id").as("row_id"), col("j.datasetA.CURIE").as("syn_curie"),
-        col("j.datasetA.CLASS").as("sclass"), col("j.datasetA.synonym").as("synonym"),
-        col("j.datasetB.pref_curie").as("foreign_curie"), col("j.datasetB.pclass").as("fclass"),
-        col("j.dist").as("dist"))
-      .filter(col("sclass") === col("fclass") && col("syn_curie") =!= col("foreign_curie"))
+    val prefBands = (0 until NumHashes / BandSize).map { b =>
+      preferred.select(col("pref_curie"), col("pclass"), col("pname"), col("grams"),
+        array((0 until BandSize).map(k => col("sig")(b * BandSize + k)): _*).as("band")).withColumn("b", lit(b))
+    }.reduce(_ unionByName _)
+
+    val candidates = synBands
+      .join(prefBands, Seq("b", "band"))
+      .filter(col("sclass") === col("pclass") && col("syn_curie") =!= col("pref_curie"))
+      .select(col("sclass"), col("syn_curie"), col("synonym"), col("pref_curie"), col("grams"), col("pname"))
+      .distinct()
+
+    val gramUdf = udf((a: Seq[String], p: String) => jaccard(a, trigrams(p)))
+    val best = candidates
+      .withColumn("sim", gramUdf(col("grams"), col("pname")))
+      .filter(col("sim") >= cfg.crossSimilarity)
       .groupBy(col("sclass"), col("syn_curie"), col("synonym"))
-      .agg(min(struct(col("dist"), col("foreign_curie"))).as("best"))
-      .select(col("sclass"), col("syn_curie"), col("synonym"), col("best.dist").as("best_dist"),
-        col("best.foreign_curie").as("detail_curie"))
-      .join(cohesionTable(df),
-        col("syn_curie") === col("c_curie") && col("synonym") === col("c_synonym"), "left")
-      // names colliding inside their own clique are the cohesion signal's job; the cross signal wants a
-      // synonym that is far from its whole clique yet near a foreign preferred name.
-      .filter(
-        (1.0 - col("best_dist")) >= cfg.crossSimilarity &&
-          (col("members").isNull || (1.0 - col("best_dist")) - col("own_cohesion") >= cfg.crossMargin))
+      .agg(max(struct(col("sim"), col("pref_curie"))).as("bestm"))
+      .select(col("sclass"), col("syn_curie"), col("synonym"), col("bestm.sim").as("sim"),
+        col("bestm.pref_curie").as("detail_curie"))
+
+    best
+      .join(cohesionTable(df), col("syn_curie") === col("c_curie") && col("synonym") === col("c_synonym"), "left")
+      .filter(col("members").isNull || (col("sim") - col("own_cohesion")) >= cfg.crossMargin)
       .select(
         col("sclass").as("CLASS"), col("syn_curie").as("CURIE"), col("synonym"), lit("cross").as("signal"),
-        concat(lit("sim="), 1.0 - col("best_dist"), lit(" matches "), col("detail_curie")).as("detail"))
+        concat(lit("sim="), col("sim"), lit(" matches "), col("detail_curie")).as("detail"))
   }
 
   private def emptyFlags(df: DataFrame): DataFrame =
