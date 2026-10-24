@@ -46,10 +46,19 @@ object GtdbSourceSuite extends TestSuite {
       assert(subtilis.head("identifiers") == Seq("GTDB:s__Bacillus_subtilis"))
     }
 
-    test("many-to-one guard: the alphabetically-first species crossrefs, the rest stay singletons") {
-      // GTDB:s__Escherichia_coli and GTDB:s__Escherichia_coli_B both carry ncbi_species_taxid 562.
-      // Both must NOT land in NCBITaxon:562; the loser keeps its own GTDB clique.
+    test("majority vote: a species crossrefs its most-supported taxid") {
+      // s__Escherichia coli: 2 genomes with 562, 1 with 623 -> crossrefs NCBITaxon:562.
+      val ncbi = rowsWhere(gtdb, "leader = 'NCBITaxon:562'")
+      assert(ncbi.length == 1)
+      assert(ncbi.head("preferred_name") == "Escherichia coli")
+    }
+
+    test("many-to-one guard: the best-supported species crossrefs, the rest stay singletons") {
+      // s__Escherichia coli (2 genomes on 562) and s__Escherichia_coli_B (1 genome on 562) both
+      // majority-map to 562. Both must NOT land in NCBITaxon:562; the loser keeps its own clique.
       assert(rowsWhere(gtdb, "leader = 'NCBITaxon:562'").head("identifiers") == Seq("GTDB:s__Escherichia_coli"))
+      // the minority taxid creates no clique: no species majority-maps to it
+      assert(rowsWhere(gtdb, "leader = 'NCBITaxon:623'").isEmpty)
       val loser = rowsWhere(gtdb, "leader = 'GTDB:s__Escherichia_coli_B'")
       assert(loser.length == 1)
       assert(loser.head("preferred_name") == "Escherichia coli B")

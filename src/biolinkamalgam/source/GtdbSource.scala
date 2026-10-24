@@ -14,10 +14,11 @@ import org.apache.spark.sql.{DataFrame, SparkSession}
   * via the Registry's by-leader union) AND a `GTDB:`-prefixed synonym of it, since the export schema carries no
   * identifiers column and the crossref must be visible in the parquet (same mechanism as INCHIKEY promotion).
   *
-  * Many-to-one guard (PR #978 parity): several GTDB species can share one NCBI species taxid, and the
-  * no-conflation invariant forbids merging them. The guard is DETERMINISTIC here — the alphabetically-first species
-  * crossrefs and the rest stay GTDB singletons. PR #978 used first-in-file order, which parallel reads cannot
-  * reproduce.
+  * Many-to-one guard (PR #978 parity): `ncbi_species_taxid` is a PER-GENOME column and GTDB disagrees with NCBI
+  * constantly, so a species' crossref is its MAJORITY taxid (most genomes; ties -> smallest taxid), and several
+  * species can still majority-map to one taxid. Those must never merge: the species with the most genomes backing
+  * that taxid wins the crossref, the rest stay GTDB singletons. All tiebreaks deterministic (support desc, then
+  * CURIE asc) so reruns reproduce.
   */
 class GtdbSource extends SynonymSource("gtdb", priority = 10) {
 
@@ -43,20 +44,30 @@ class GtdbSource extends SynonymSource("gtdb", priority = 10) {
       .withColumn("curie", concat(lit("GTDB:"), regexp_replace(col("token"), " ", "_")))
       .withColumn("display", regexp_replace(substring_index(col("token"), "__", -1), "_", " "))
 
-    // Species -> NCBI mapping: distinct pairs; a species seen with several taxids across genomes (rare GTDB
-    // reassignments) deterministically keeps the smallest.
-    val species = labeled.filter(col("rank") === "s").select("curie", "display", "ncbi_species_taxid").distinct
-    val spPairs = species.withColumn("taxid", firstTaxid(col("ncbi_species_taxid")))
-    val resolved = spPairs
+    // Per-genome (species, taxid) pairs -> support counts; each species crossrefs its majority taxid.
+    val pairs = labeled
+      .filter(col("rank") === "s")
+      .select("curie", "display", "ncbi_species_taxid")
+      .withColumn("taxid", firstTaxid(col("ncbi_species_taxid")))
       .filter(col("taxid").isNotNull)
-      .groupBy("curie", "display")
-      .agg(min("taxid").as("taxid"))
+      .groupBy("curie", "display", "taxid")
+      .agg(count(lit(1)).as("genomes"))
 
-    val win = Window.partitionBy(col("taxid")).orderBy(col("curie"))
-    val ranked = resolved.withColumn("rn", row_number().over(win))
-    val crossref = ranked.filter(col("rn") === 1)
-    val taxidSingletons = ranked.filter(col("rn") > 1).select("curie", "display")
-    val noTaxid = spPairs.filter(col("taxid").isNull).select("curie", "display")
+    val speciesWin = Window.partitionBy(col("curie")).orderBy(col("genomes").desc, col("taxid").asc)
+    val resolved = pairs
+      .withColumn("rn", row_number().over(speciesWin))
+      .filter(col("rn") === 1)
+      .select("curie", "display", "taxid", "genomes")
+
+    val taxidWin = Window.partitionBy(col("taxid")).orderBy(col("genomes").desc, col("curie").asc)
+    val ranked = resolved.withColumn("rn2", row_number().over(taxidWin))
+    val crossref = ranked.filter(col("rn2") === 1)
+    val taxidSingletons = ranked.filter(col("rn2") > 1).select("curie", "display")
+    val noTaxid = labeled
+      .filter(col("rank") === "s")
+      .select("curie", "display")
+      .distinct
+      .join(pairs.select("curie").distinct, Seq("curie"), "left_anti")
     val higherRanks = labeled.filter(col("rank") =!= "s").select("curie", "display").distinct
 
     val singletonTaxa = taxidSingletons.unionByName(noTaxid).unionByName(higherRanks)
