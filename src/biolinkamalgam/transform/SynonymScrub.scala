@@ -151,7 +151,14 @@ object SynonymScrub {
   private def emptyFlags(df: DataFrame): DataFrame =
     df.select(col("CLASS"), col("CURIE"), lit("").as("synonym"), lit("").as("signal"), lit("").as("detail")).limit(0)
 
-  /** Input minus every flagged (CURIE, synonym). */
-  def scrubbed(df: DataFrame, flagged: DataFrame): DataFrame =
-    df.join(flagged.select("CURIE", "synonym").distinct(), Seq("CURIE", "synonym"), "left_anti")
+  /** Input minus every flagged synonym: drop-set per CURIE, array_except on SYNONYMS (order-preserving). */
+  def scrubbed(df: DataFrame, flagged: DataFrame): DataFrame = {
+    val toDrop = flagged.groupBy("CURIE").agg(collect_set("synonym").as("drop"))
+    val emptyArr = array().cast("array<string>")
+    df.join(toDrop, Seq("CURIE"), "left")
+      .select(
+        col("CURIE"), col("PREFERRED_NAME"), col("CLASS"),
+        coalesce(array_except(col("SYNONYMS"), coalesce(col("drop"), emptyArr)), emptyArr).as("SYNONYMS")
+      )
+  }
 }
