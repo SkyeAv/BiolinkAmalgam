@@ -49,8 +49,8 @@ object SynonymScrubSuite extends TestSuite {
     // cross: synonym in the WRONG clique — far from every Brk member, near Brca's preferred
     ("NCBIGene:20", "Brk kinase", "biolink:Gene",
       Seq("Brk kinase", "BRK1", "brk one", "Brca1 tumor suppressor")),
-    ("NCBIGene:21", "Brca1 tumor suppressor isoform 1", "biolink:Gene",
-      Seq("Brca1 tumor suppressor isoform 1", "BRCA1", "brca one")),
+    ("NCBIGene:21", "Brca1 tumor suppressor", "biolink:Gene",
+      Seq("Brca1 tumor suppressor", "BRCA1", "brca one")),
     // gene/chemical dual recurrence is LEGAL (different classes, never hub-flagged)
     ("CHEBI:555", "Glucose", "biolink:SmallMolecule", Seq("Glucose", "D-glucose", "dextrose")),
     ("NCBIGene:30", "Glucose transporter-like 1", "biolink:Gene", Seq("Glucose transporter-like 1", "GLUT1"))
@@ -77,6 +77,9 @@ object SynonymScrubSuite extends TestSuite {
     test("cross: synonym near a foreign preferred name and far from its own clique is flagged") {
       val f = flagsFor("cross")
       assert(f.contains(("NCBIGene:20", "Brca1 tumor suppressor")))
+      // a clique's own preferred name is the identity anchor: never cross-flagged, even though
+      // "Test kinase 2" is 0.8-similar to sibling clique "Test kinase 1"'s preferred name
+      assert(!f.contains(("NCBIGene:2", "Test kinase 2")))
     }
 
     test("gene/chemical dual recurrence across classes is never flagged") {

@@ -98,9 +98,14 @@ object SynonymScrub {
   private def crossFlags(df: DataFrame, cfg: ScrubConfig): DataFrame = {
     val tg = udf((s: String) => trigrams(s).toArray)
 
+    // The own preferred name is the clique's identity anchor: a synonym that IS it (same strip key)
+    // is never "assigned to the wrong clique", however similar it is to a sibling clique's name.
+    val ownPref = df.select(col("CURIE"), NameKey.stripKey(col("PREFERRED_NAME")).as("opk"))
     val synonyms = df
       .select(col("CURIE"), col("CLASS"), explode(col("SYNONYMS")).as("synonym"))
       .filter(length(col("synonym")) >= cfg.minNameLen)
+      .join(ownPref, Seq("CURIE"))
+      .filter(NameKey.stripKey(col("synonym")) =!= col("opk"))
       .withColumn("grams", tg(col("synonym")))
       .withColumn("sig", minHashUdf(col("grams")))
     val preferred = df
