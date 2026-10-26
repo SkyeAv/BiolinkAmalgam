@@ -11,8 +11,8 @@ import biolinkamalgam.ingest.{
 }
 import biolinkamalgam.spark.SparkSupport
 import biolinkamalgam.transform.SynonymScrub
-import org.apache.spark.sql.functions.{col, rand, row_number}
 import mainargs.main
+import org.apache.spark.sql.functions.{col, rand, row_number}
 
 /** CLI entry point. Subcommands: run — full pipeline: ingest → merge → arbitrate → export bench — timed pipeline run
   * recording per-stage metrics to bench/history/
@@ -209,8 +209,12 @@ object Main {
       // Report instead of fail; a runaway number would signal an arbitration bug.
       val crossCurie = exploded.groupBy("CLASS", "s").count().filter(col("count") > 1)
       val crossCurieCount = crossCurie.count()
-      val crossSample = crossCurie.orderBy(desc("count")).limit(3).collect()
-        .map(r => s"${r.getAs[String]("s")} x${r.getAs[Long]("count")} ${r.getAs[String]("CLASS")}").mkString("; ")
+      val crossSample = crossCurie
+        .orderBy(desc("count"))
+        .limit(3)
+        .collect()
+        .map(r => s"${r.getAs[String]("s")} x${r.getAs[Long]("count")} ${r.getAs[String]("CLASS")}")
+        .mkString("; ")
       check(
         "one-CURIE-per-(class, synonym) [informational]",
         crossCurieCount <= 5000000,
@@ -227,14 +231,17 @@ object Main {
       check("no 'language' synonyms", exploded.filter("lower(s) like '%language%'").count() == 0)
       check(
         "no dead-term synonyms",
-        exploded.filter(lower(col("s")).isin("unknown", "none", "null", "the", "and", "expression", "symbol"))
+        exploded
+          .filter(lower(col("s")).isin("unknown", "none", "null", "the", "and", "expression", "symbol"))
           .count() == 0
       )
 
       println("\ntop classes:")
       df.groupBy("CLASS").count().orderBy(desc("count")).show(15, false)
-      println(s"synonyms seen under more than one CLASS (legal across classes): " +
-        exploded.groupBy("s").count().filter(col("count") > 1).count())
+      println(
+        "synonyms seen under more than one CLASS (legal across classes): " +
+          exploded.groupBy("s").count().filter(col("count") > 1).count()
+      )
 
       if (failed) {
         println("VALIDATION FAILED")
@@ -244,10 +251,7 @@ object Main {
     } finally spark.stop()
   }
 
-  /** Synonym-quality scrub: flags probably-incorrect synonyms in a finished run. Report first — write
-    * <out>/scrub-report/ (per-signal counts + random evidence samples); only --apply also writes the scrubbed
-    * dataset as <out>/biolinkamalgam-scrubbed/. Review the samples before trusting the thresholds.
-    */
+  /** Report-only synonym diagnostics. Never writes or modifies the dataset. Lexical flags need review. */
   @main def scrub(
       out: String,
       scrubConfig: String = "config/synonym_scrub.yaml",
@@ -260,29 +264,48 @@ object Main {
       val dir = os.Path(out, os.pwd)
       val df = spark.read.parquet((dir / "biolinkamalgam.parquet").toString)
       val cfg = Config.loadScrub(os.Path(scrubConfig, os.pwd))
-      val flagged = SynonymScrub.flags(df, cfg)
+      val scored = SynonymScrub
+        .cohesionTable(df, cfg)
+        .persist(org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK)
+      val flagged = SynonymScrub
+        .flags(df, cfg, scored)
         .persist(org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK)
       val counts = flagged.groupBy("signal").count().orderBy("signal")
       counts.show(false)
       val total = flagged.count()
-      println(s"flagged synonyms: $total of ${df.count()} cliques")
+      println(s"diagnostic signal rows (not unique synonyms): $total")
+      println(
+        s"cohesion scores only cliques with ${cfg.minCliqueMembers}-${cfg.maxCliqueMembers} names; others are skipped"
+      )
 
       val reportDir = dir / "scrub-report"
       os.makeDir.all(reportDir)
       val sampled = flagged
-        .withColumn("rn", row_number().over(
-          org.apache.spark.sql.expressions.Window.partitionBy(col("signal")).orderBy(rand(42L))))
+        .withColumn(
+          "rn",
+          row_number().over(org.apache.spark.sql.expressions.Window.partitionBy(col("signal")).orderBy(rand(42L)))
+        )
         .filter(col("rn") <= cfg.sampleExamples)
         .drop("rn")
-      counts.coalesce(1).write.mode("overwrite").option("header", "true").option("sep", "\t")
+      counts
+        .coalesce(1)
+        .write
+        .mode("overwrite")
+        .option("header", "true")
+        .option("sep", "\t")
         .csv((reportDir / "counts").toString)
-      sampled.coalesce(1).write.mode("overwrite").option("header", "true").option("sep", "\t")
+      sampled
+        .coalesce(1)
+        .write
+        .mode("overwrite")
+        .option("header", "true")
+        .option("sep", "\t")
         .csv((reportDir / "samples").toString)
       println(s"report: $reportDir")
 
-      val scrubbedDir = dir / "biolinkamalgam-scrubbed.parquet"
-      SynonymScrub.scrubbed(df, flagged).write.mode("overwrite").parquet(scrubbedDir.toString)
-      println(s"scrubbed parquet: $scrubbedDir")
+      flagged.unpersist(blocking = false)
+      scored.unpersist(blocking = false)
+      println("report only: dataset unchanged; flags are not proof of incorrectness")
     } finally spark.stop()
   }
 

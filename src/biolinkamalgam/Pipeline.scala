@@ -125,9 +125,9 @@ object Pipeline {
     stages.toSeq
   }
 
-  /** Cache validity key: snapshot file identities (name+size+mtime), the sample size, and the config that can
-    * change the ingest output (taxa allowlist, promoted prefixes, category/prefix drops). Name-gate lists live in
-    * Uniqueness and are deliberately NOT part of the key.
+  /** Cache validity key: snapshot file identities (name+size+mtime), the sample size, and the config that can change
+    * the ingest output (taxa allowlist, promoted prefixes, category/prefix drops). Name-gate lists live in Uniqueness
+    * and are deliberately NOT part of the key.
     */
   private val RegistryVersion = "4" // v3: crossrefs as synonyms; v4: majority-vote crossrefs (per-genome taxid column)
 
@@ -170,7 +170,12 @@ object Pipeline {
     put(taxa.allowlist.toSeq.sorted.mkString(","))
     put(promotePrefixes.toSeq.sorted.mkString(","))
     put(filters.dropCategories.toSeq.sorted.mkString(","))
-    put(filters.dropCuriePrefixesByCategory.toSeq.sortBy(_._1).map { case (k, v) => s"$k=${v.toSeq.sorted.mkString("|")}" }.mkString(","))
+    put(
+      filters.dropCuriePrefixesByCategory.toSeq
+        .sortBy(_._1)
+        .map { case (k, v) => s"$k=${v.toSeq.sorted.mkString("|")}" }
+        .mkString(",")
+    )
     put(filters.excludeCurieRegex.mkString(","))
     digest.digest().map(b => f"$b%02x").mkString
   }

@@ -104,6 +104,27 @@ Drop files into a directory and pass `--custom <dir>`:
 
 For anything more complex, subclass `SynonymSource` and add one line to `Registry.forConfig`.
 
+=== Synonym diagnostics (report only)
+
+`make run ARGS="scrub --out <finished-run> --profile wenceslaus"` writes
+`<finished-run>/scrub-report/` counts and evidence samples. It never modifies or
+writes a replacement dataset. A diagnostic row is a signal, not a proven error;
+valid abbreviations, translations, chemical names and cross-taxon names can look
+like outliers.
+
+`config/synonym_scrub.yaml` controls the bounds. Cohesion scores only cliques
+between `min_clique_members` and `max_clique_members` names. Larger cliques are
+skipped, not certified clean. Preferred names and CURIE-shaped aliases (including
+`INCHIKEY:` and `GTDB:`) are protected from all signals. The cross signal checks
+only cohesion outliers against exact stripped preferred-name keys, skipping keys
+with more than `cross_key_max_targets` targets. It does not search fuzzy near
+matches. This intentionally trades recall for bounded work; the previous global
+MinHash join exhausted scratch space on the full snapshot.
+
+Hub counts are same-class recurrence among non-preferred, non-identifier aliases,
+not taxon-scoped evidence of an error. Signal counts overlap and are not unique
+synonym counts. No flags are applied automatically.
+
 == Rules that will not change
 
 * No conflation, ever: `synonyms-conflated/` and `+*Conflated*+` files are never read.

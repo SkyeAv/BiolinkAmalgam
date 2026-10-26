@@ -112,7 +112,8 @@ object DatasetCard {
        |BABEL aggregates many upstream biomedical resources with heterogeneous licenses
        |(UMLS content in particular requires a UMLS license). This dataset inherits those
        |upstream terms; check the [BABEL license summary](https://github.com/TranslatorSRI/Babel)
-       |for your intended use.${if (gtdb == "none") "" else "\nGTDB data are CC-BY-SA-4.0 (share-alike); GTDB-derived taxa carry those terms."}
+       |for your intended use.${if (gtdb == "none") ""
+      else "\nGTDB data are CC-BY-SA-4.0 (share-alike); GTDB-derived taxa carry those terms."}
        |""".stripMargin
   }
 

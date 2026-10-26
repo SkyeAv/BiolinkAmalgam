@@ -30,8 +30,8 @@ object Config {
     val empty: FilterConfig = FilterConfig(Set.empty, Map.empty, Seq.empty, Set.empty, Seq.empty, Seq.empty)
   }
 
-  /** Declarative synonym-quality thresholds (config/synonym_scrub.yaml). Every number here decides which synonyms
-    * get dropped as "probably incorrect", so the yaml carries a why-comment per entry and the scrub tool runs in a
+  /** Declarative synonym-quality thresholds (config/synonym_scrub.yaml). Every number here decides which synonyms get
+    * dropped as "probably incorrect", so the yaml carries a why-comment per entry and the scrub tool runs in a
     * report-only mode first: inspect the evidence BEFORE trusting the thresholds on real data.
     */
   case class ScrubConfig(
@@ -39,12 +39,22 @@ object Config {
       cohesionFloor: Double,
       hubCliques: Int,
       crossEnabled: Boolean,
-      crossTokenDfCap: Long,
+      crossKeyMaxTargets: Int,
+      maxCliqueMembers: Int,
       crossSimilarity: Double,
       crossMargin: Double,
       minNameLen: Int,
       sampleExamples: Int
-  ) extends Serializable
+  ) extends Serializable {
+    require(minCliqueMembers >= 2, "min_clique_members must be >= 2")
+    require(maxCliqueMembers >= minCliqueMembers, "max_clique_members must be >= min_clique_members")
+    require(hubCliques >= 2 && crossKeyMaxTargets >= 1, "hub_cliques must be >= 2; cross_key_max_targets must be >= 1")
+    require(minNameLen >= 3 && sampleExamples >= 1, "min_name_len must be >= 3; sample_examples must be >= 1")
+    require(
+      Seq(cohesionFloor, crossSimilarity, crossMargin).forall(v => v.isFinite && v >= 0 && v <= 1),
+      "scrub similarity thresholds must be finite and between 0 and 1"
+    )
+  }
 
   object ScrubConfig {
     val empty: ScrubConfig = ScrubConfig(
@@ -52,7 +62,8 @@ object Config {
       cohesionFloor = 0.22,
       hubCliques = 8,
       crossEnabled = true,
-      crossTokenDfCap = 2000L,
+      crossKeyMaxTargets = 4,
+      maxCliqueMembers = 64,
       crossSimilarity = 0.72,
       crossMargin = 0.2,
       minNameLen = 4,
@@ -183,20 +194,36 @@ object Config {
     )
   }
 
-  /** Synonym-quality thresholds; absent file or key = the documented default. */
+  /** Synonym-quality thresholds. Missing files and unknown keys fail rather than silently changing analysis. */
   def loadScrub(path: os.Path): ScrubConfig = {
     val d = ScrubConfig.empty
-    if (!os.exists(path)) return d
+    require(os.exists(path), s"scrub config does not exist: $path")
     val doc = yamlDoc(path)
+    require(doc != null, s"empty scrub config: $path")
+    val allowed = Set(
+      "min_clique_members",
+      "max_clique_members",
+      "cohesion_floor",
+      "hub_cliques",
+      "cross_enabled",
+      "cross_key_max_targets",
+      "cross_similarity",
+      "cross_margin",
+      "min_name_len",
+      "sample_examples"
+    )
+    require(doc.keySet().asScala.forall(allowed.contains), s"unknown scrub config keys in $path")
     def intOpt(key: String, default: Int): Int = Option(doc.get(key)).map(_.toString.toInt).getOrElse(default)
     def dblOpt(key: String, default: Double): Double = Option(doc.get(key)).map(_.toString.toDouble).getOrElse(default)
-    def boolOpt(key: String, default: Boolean): Boolean = Option(doc.get(key)).map(_.toString.toBoolean).getOrElse(default)
+    def boolOpt(key: String, default: Boolean): Boolean =
+      Option(doc.get(key)).map(_.toString.toBoolean).getOrElse(default)
     d.copy(
       minCliqueMembers = intOpt("min_clique_members", d.minCliqueMembers),
       cohesionFloor = dblOpt("cohesion_floor", d.cohesionFloor),
       hubCliques = intOpt("hub_cliques", d.hubCliques),
       crossEnabled = boolOpt("cross_enabled", d.crossEnabled),
-      crossTokenDfCap = intOpt("cross_token_df_cap", d.crossTokenDfCap.toInt).toLong,
+      crossKeyMaxTargets = intOpt("cross_key_max_targets", d.crossKeyMaxTargets),
+      maxCliqueMembers = intOpt("max_clique_members", d.maxCliqueMembers),
       crossSimilarity = dblOpt("cross_similarity", d.crossSimilarity),
       crossMargin = dblOpt("cross_margin", d.crossMargin),
       minNameLen = intOpt("min_name_len", d.minNameLen),

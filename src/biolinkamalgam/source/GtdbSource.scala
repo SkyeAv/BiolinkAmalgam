@@ -4,21 +4,21 @@ import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{DataFrame, SparkSession}
 
-/** GTDB (Genome Taxonomy Database) metadata as a `biolink:OrganismTaxon` source — the BiolinkAmalgam port of BABEL
-  * PR #978. Input: one or more GTDB `bac120`/`ar53` metadata TSVs (plain or .gz), read by column NAME:
-  * `gtdb_taxonomy` ("d__Bacteria; p__Pseudomonadota; ...; s__Escherichia coli") and `ncbi_species_taxid`.
+/** GTDB (Genome Taxonomy Database) metadata as a `biolink:OrganismTaxon` source — the BiolinkAmalgam port of BABEL PR
+  * #978. Input: one or more GTDB `bac120`/`ar53` metadata TSVs (plain or .gz), read by column NAME: `gtdb_taxonomy`
+  * ("d__Bacteria; p__Pseudomonadota; ...; s__Escherichia coli") and `ncbi_species_taxid`.
   *
-  * Every rank token becomes a GTDB clique: CURIE `GTDB:s__Escherichia_coli` (spaces to underscores, Bioregistry
-  * form), preferred name the display label ("Escherichia coli"). Species carrying an `ncbi_species_taxid` crossref
-  * into the biolink taxon space: the GTDB CURIE becomes an identifier of the `NCBITaxon:<taxid>` clique (folding in
-  * via the Registry's by-leader union) AND a `GTDB:`-prefixed synonym of it, since the export schema carries no
-  * identifiers column and the crossref must be visible in the parquet (same mechanism as INCHIKEY promotion).
+  * Every rank token becomes a GTDB clique: CURIE `GTDB:s__Escherichia_coli` (spaces to underscores, Bioregistry form),
+  * preferred name the display label ("Escherichia coli"). Species carrying an `ncbi_species_taxid` crossref into the
+  * biolink taxon space: the GTDB CURIE becomes an identifier of the `NCBITaxon:<taxid>` clique (folding in via the
+  * Registry's by-leader union) AND a `GTDB:`-prefixed synonym of it, since the export schema carries no identifiers
+  * column and the crossref must be visible in the parquet (same mechanism as INCHIKEY promotion).
   *
   * Many-to-one guard (PR #978 parity): `ncbi_species_taxid` is a PER-GENOME column and GTDB disagrees with NCBI
-  * constantly, so a species' crossref is its MAJORITY taxid (most genomes; ties -> smallest taxid), and several
-  * species can still majority-map to one taxid. Those must never merge: the species with the most genomes backing
-  * that taxid wins the crossref, the rest stay GTDB singletons. All tiebreaks deterministic (support desc, then
-  * CURIE asc) so reruns reproduce.
+  * constantly, so a species' crossref is its MAJORITY taxid (most genomes; ties -> smallest taxid), and several species
+  * can still majority-map to one taxid. Those must never merge: the species with the most genomes backing that taxid
+  * wins the crossref, the rest stay GTDB singletons. All tiebreaks deterministic (support desc, then CURIE asc) so
+  * reruns reproduce.
   */
 class GtdbSource extends SynonymSource("gtdb", priority = 10) {
 
