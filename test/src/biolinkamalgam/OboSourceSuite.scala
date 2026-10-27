@@ -47,13 +47,63 @@ object OboSourceSuite extends TestSuite {
       try {
         val bad = dir / "bad.obo"
         os.write(bad, "hello world\n")
-        assertThrows[IllegalArgumentException](new OboSource(bad, "TEST", "biolink:NamedThing").read(spark, bad))
+        assertThrows[org.apache.spark.SparkException](
+          new OboSource(bad, "TEST", "biolink:NamedThing").read(spark, bad).count()
+        )
         val headerOnly = dir / "header.obo"
         os.write(headerOnly, "format-version: 1.4\n")
-        assertThrows[IllegalArgumentException](
-          new OboSource(headerOnly, "TEST", "biolink:NamedThing").read(spark, headerOnly)
+        assertThrows[org.apache.spark.SparkException](
+          new OboSource(headerOnly, "TEST", "biolink:NamedThing").read(spark, headerOnly).count()
         )
         assertThrows[IllegalArgumentException](new OboSource(obo, "1bad", "biolink:NamedThing"))
+      } finally os.remove.all(dir)
+    }
+    test("quoted punctuation, escaped backslashes and gzip preserve original strings") {
+      val text = """[Term]
+                   |id: TEST:99
+                   |name: punctuation
+                   |synonym: "keep ! {braces} \"quote\"" EXACT [X:1 "citation"] ! trailing comment
+                   |synonym: "literal \\n text" EXACT []
+                   |""".stripMargin
+      val term = OboTerms.parseTerms(text.linesIterator, _ => true).next()
+      assert(term.exact.head == "keep ! {braces} \"quote\"")
+      assert(term.exact(1) == "literal \\n text")
+      val dir = os.temp.dir()
+      try {
+        val gz = dir / "test.obo.gz"
+        val out = new java.util.zip.GZIPOutputStream(java.nio.file.Files.newOutputStream(gz.toNIO))
+        try out.write(os.read.bytes(obo))
+        finally out.close()
+        val source = new OboSource(gz, "TEST", "biolink:PhenotypicFeature", Seq("NCBITaxon:9606"))
+        val rows = source.transform(source.read(spark, gz))
+        assert(rows.count() == 3)
+        assert(rows.select("taxa").head().getSeq[String](0) == Seq("NCBITaxon:9606"))
+      } finally os.remove.all(dir)
+    }
+
+    test("registry binds one reviewed source per ontology file and fails on gaps") {
+      val dir = os.temp.dir()
+      try {
+        os.copy(obo, dir / "test.obo")
+        val cfg = dir / "obo_sources.yaml"
+        os.write(
+          cfg,
+          """ontologies:
+                          |  - prefix: TEST
+                          |    url: http://example.org/test.obo
+                          |    category: biolink:PhenotypicFeature
+                          |    license: CC-BY-4.0
+                          |    taxa: []
+                          |""".stripMargin
+        )
+        val entries = biolinkamalgam.source.OboRegistry.entries(cfg)
+        assert(entries.map(_.prefix) == Seq("TEST"))
+        val sources = biolinkamalgam.source.OboRegistry.sources(dir, entries)
+        assert(sources.map(_.name) == Seq("obo:TEST"))
+        os.remove(dir / "test.obo")
+        assertThrows[IllegalArgumentException](biolinkamalgam.source.OboRegistry.sources(dir, entries))
+        os.write(dir / "bad.yaml", "ontologies:\n  - prefix: X\n    bogus: 1\n")
+        assertThrows[IllegalArgumentException](biolinkamalgam.source.OboRegistry.entries(dir / "bad.yaml"))
       } finally os.remove.all(dir)
     }
   }

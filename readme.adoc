@@ -104,6 +104,25 @@ Drop files into a directory and pass `--custom <dir>`:
 
 For anything more complex, subclass `SynonymSource` and add one line to `Registry.forConfig`.
 
+=== Additional source adapters (not activated)
+
+`ClinVarSource` reads the NCBI `variant_summary.txt[.gz]` header explicitly,
+deduplicates assembly rows, and emits separate `CLINVAR:` variant and `DBSNP:rs`
+locus cliques. A locus can reference several alleles; `crossrefs` returns typed
+`dbsnp_reference` and `gene_association` edges, not equivalence claims. Gene and
+disease labels never become variant synonyms. Preferred-name merging excludes
+`biolink:SequenceVariant` because label equality does not establish allele identity.
+This adapter covers only rsIDs present in the supplied ClinVar file, not all dbSNP.
+
+`OboSource` streams OBO files (including gzip), admits active own-prefix terms,
+names, EXACT synonyms and `alt_id` aliases, and preserves configured taxa. It
+ignores BROAD/NARROW/RELATED synonyms, generic xrefs and obsolete terms. It does
+not yet export ontology graph edges. Imported foreign-prefix terms are skipped.
+
+Neither adapter is wired into the production CLI yet. `config/obo_sources.yaml`
+is an inactive candidate list with provisional categories and license fields;
+it must not be treated as a verified coverage or redistribution manifest.
+
 === Synonym diagnostics (report only)
 
 `make run ARGS="scrub --out <finished-run> --profile wenceslaus"` writes

@@ -1,0 +1,115 @@
+# INACTIVE source candidates, not consumed by Pipeline or Registry.
+# URLs, licenses, term-level classes and species coverage require verification before activation.
+# Ontology-wide categories below are provisional, especially MAXO/GENO NamedThing fallbacks.
+# No human review or license clearance is asserted. Generic xrefs never imply equivalence.
+# These candidates are not a claim of complete Biolink coverage.
+ontologies:
+  - prefix: MP
+    url: http://purl.obolibrary.org/obo/mp.obo
+    category: biolink:PhenotypicFeature
+    license: CC-BY-4.0
+    taxa: [NCBITaxon:10090]
+  - prefix: ZP
+    url: http://purl.obolibrary.org/obo/zp.obo
+    category: biolink:PhenotypicFeature
+    license: CC-BY-3.0
+    taxa: [NCBITaxon:7955]
+  - prefix: FYPO
+    url: http://purl.obolibrary.org/obo/fypo.obo
+    category: biolink:PhenotypicFeature
+    license: CC-BY-4.0
+    taxa: [NCBITaxon:4896]
+  - prefix: WBPhenotype
+    url: http://purl.obolibrary.org/obo/wbphenotype.obo
+    category: biolink:PhenotypicFeature
+    license: CC-BY-4.0
+    taxa: [NCBITaxon:6239]
+  - prefix: XPO
+    url: http://purl.obolibrary.org/obo/xpo.obo
+    category: biolink:PhenotypicFeature
+    license: CC-BY-3.0
+    taxa: [NCBITaxon:8355]
+  - prefix: APO
+    url: http://purl.obolibrary.org/obo/apo.obo
+    category: biolink:PhenotypicFeature
+    license: CC-BY-4.0
+    taxa: []
+  - prefix: TO
+    url: http://purl.obolibrary.org/obo/to.obo
+    category: biolink:PhenotypicFeature
+    license: CC-BY-4.0
+    taxa: []
+  - prefix: MAXO
+    url: http://purl.obolibrary.org/obo/maxo.obo
+    category: biolink:NamedThing
+    license: CC-BY-4.0
+    taxa: []
+  - prefix: HsapDv
+    url: http://purl.obolibrary.org/obo/hsapdv.obo
+    category: biolink:LifeStage
+    license: CC-BY-3.0
+    taxa: [NCBITaxon:9606]
+  - prefix: MmusDv
+    url: http://purl.obolibrary.org/obo/mmusdv.obo
+    category: biolink:LifeStage
+    license: CC-BY-3.0
+    taxa: [NCBITaxon:10090]
+  - prefix: ZFS
+    url: http://purl.obolibrary.org/obo/zfs.obo
+    category: biolink:LifeStage
+    license: CC-BY-3.0
+    taxa: [NCBITaxon:7955]
+  - prefix: FBdv
+    url: http://purl.obolibrary.org/obo/fbdv.obo
+    category: biolink:LifeStage
+    license: CC-BY-4.0
+    taxa: [NCBITaxon:7227]
+  - prefix: WBls
+    url: http://purl.obolibrary.org/obo/wbls.obo
+    category: biolink:LifeStage
+    license: CC-BY-4.0
+    taxa: [NCBITaxon:6239]
+  - prefix: MOD
+    url: http://purl.obolibrary.org/obo/mod.obo
+    category: biolink:PosttranslationalModification
+    license: CC-BY-4.0
+    taxa: []
+  - prefix: TAXRANK
+    url: http://purl.obolibrary.org/obo/taxrank.obo
+    category: biolink:TaxonomicRank
+    license: CC0-1.0
+    taxa: []
+  - prefix: FBcv
+    url: http://purl.obolibrary.org/obo/fbcv.obo
+    category: biolink:PhenotypicFeature
+    license: CC-BY-4.0
+    taxa: [NCBITaxon:7227]
+  - prefix: GENO
+    url: http://purl.obolibrary.org/obo/geno.obo
+    category: biolink:NamedThing
+    license: CC-BY-4.0
+    taxa: []
+  - prefix: PO
+    url: http://purl.obolibrary.org/obo/po.obo
+    category: biolink:AnatomicalEntity
+    license: CC-BY-4.0
+    taxa: []
+  - prefix: FAO
+    url: http://purl.obolibrary.org/obo/fao.obo
+    category: biolink:AnatomicalEntity
+    license: CC0-1.0
+    taxa: []
+  - prefix: UPHENO
+    url: http://purl.obolibrary.org/obo/upheno.obo
+    category: biolink:PhenotypicFeature
+    license: CC0-1.0
+    taxa: []
+  - prefix: UNIMOD
+    url: http://www.unimod.org/obo/unimod.obo
+    category: biolink:PosttranslationalModification
+    license: public-domain-copyleft
+    taxa: []
+# Not included, with reasons (keep this section current):
+#   HANCESTRO - no OBO PURL (OWL only).       EDAM - PURL dead; repo release not pinned.
+#   FOODON    - PURL serves a stale 2016 OBO stub. GO/CL/UBERON/HP/MONDO etc - already in BABEL.
+#   full dbSNP b157 VCF - 28G, ~1.2B records; deferred pending evidence of need; ClinVar covers curated rsIDs.

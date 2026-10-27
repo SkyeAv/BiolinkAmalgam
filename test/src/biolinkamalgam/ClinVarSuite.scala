@@ -61,6 +61,18 @@ object ClinVarSuite extends TestSuite {
       assert(clinvarNames.forall(!_.contains("397"))) // gene ids never become variant names
     }
 
+    test("preferred-label equality cannot conflate alleles or rs loci") {
+      val extra = Seq("15044", "Single nucleotide variant", "rs268", "9907", "268", "GRCh38", "15044")
+      val source = new ClinVarSource(os.temp.dir() / "unused")
+      val df = source
+        .transform(raw(sample :+ extra))
+        .withColumn("source", org.apache.spark.sql.functions.lit("clinvar"))
+        .withColumn("priority", org.apache.spark.sql.functions.lit(10))
+      val result = biolinkamalgam.transform.CliqueMerge(df, Set("NCBITaxon:9606"))
+      assert(result.cliques.count() == 6)
+      assert(result.merges.count() == 0)
+    }
+
     test("crossrefs are typed edges; one rsID may have several alleles and genes") {
       val edges = ClinVarSource
         .crossrefs(raw(sample))

@@ -45,7 +45,7 @@ object CliqueMerge {
 
     // One row per (clique, scope); cliques with empty preferred names stay out of merging.
     val scoped = keyed
-      .filter(length(col("pref_key")) > 0)
+      .filter(length(col("pref_key")) > 0 && col("category") =!= "biolink:SequenceVariant")
       .withColumn("taxon_scope", explode(scopeUdf(col("taxa"))))
 
     val win = Window.partitionBy(groupKeys.map(col): _*).orderBy(rank: _*)
