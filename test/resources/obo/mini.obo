@@ -1,0 +1,32 @@
+format-version: 1.4
+data-version: 2099-01-01
+!
+
+[Term]
+id: TEST:0000001
+name: test process
+alt_id: TEST:9000001
+synonym: "test process exact variant" EXACT []
+synonym: "test process broad variant" BROAD []
+synonym: "test process related variant" RELATED []
+is_a: TEST:0000000 ! thing
+
+[Term]
+id: TEST:0000002
+name: obsolete thing
+is_obsolete: true
+replaced_by: TEST:0000003
+
+[Term]
+id: FOREIGN:0000003
+name: foreign import term
+
+[Term]
+id: TEST:0000004
+alt_id: TEST:9000004
+synonym: "no name exact" EXACT [TEST:CUR]
+
+[Term]
+id: TEST:0000005
+name: escaped characters \Wcolon\:
+synonym: "line\\nbreak" EXACT
