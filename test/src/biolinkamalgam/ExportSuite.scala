@@ -37,6 +37,17 @@ object ExportSuite extends TestSuite {
       assert(back.head().getAs[scala.collection.Seq[String]]("SYNONYMS").toSeq == Seq("syn1", "syn2"))
     }
 
+    test("binary concat replaces existing parquet only after writing the replacement") {
+      val dir = os.temp.dir(prefix = "biolinkamalgam-export-replace")
+      try {
+        val dest = dir / "biolinkamalgam.parquet"
+        Parquet.writeSingleFile(sampleDf(100), dest)
+        Parquet.writeSingleFile(sampleDf(12), dest)
+        assert(spark.read.parquet(dest.toString).count() == 12)
+        assert(!os.exists(dir / "biolinkamalgam.parts"))
+      } finally os.remove.all(dir)
+    }
+
     test("single-file parquet: simple coalesce(1) fallback path") {
       val dir = os.temp.dir(prefix = "biolinkamalgam-export-simple")
       val dest = dir / "biolinkamalgam.parquet"

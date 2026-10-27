@@ -49,7 +49,11 @@ object Parquet {
     }
 
     try {
-      binaryConcat(parts, destFile)
+      // Build beside the parts then replace: reruns must not fail CREATE against the existing destination,
+      // and the previous deliverable remains intact until the complete footer has been written.
+      val staged = tmpDir / "combined.parquet"
+      binaryConcat(parts, staged)
+      os.move(staged, destFile, replaceExisting = true)
     } catch {
       case _: NoSuchMethodError | _: NoClassDefFoundError =>
         // parquet4j API drift — fall back to the single-writer path.
@@ -66,7 +70,10 @@ object Parquet {
   private def binaryConcat(parts: Seq[os.Path], destFile: os.Path): Unit = {
     val conf = new Configuration()
     val first = HadoopInputFile.fromPath(new Path(parts.head.toString), conf)
-    val footer = ParquetFileReader.open(first).getFooter
+    val reader = ParquetFileReader.open(first)
+    val footer =
+      try reader.getFooter
+      finally reader.close()
     val schema = footer.getFileMetaData.getSchema
     val extraMeta = new java.util.HashMap[String, String]()
     footer.getFileMetaData.getKeyValueMetaData.forEach((k, v) => extraMeta.put(k, v))
