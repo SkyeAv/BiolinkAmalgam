@@ -50,6 +50,8 @@ object CliqueMergeSuite extends TestSuite {
       assert(names(winner).contains("examplein"))
       // union of [NCBIGene:9001, ENSEMBL:ENSG00000999999] + [HGNC:9002] + [CUSTOM:2]
       assert(winner.getAs[Int]("identifier_count") == 4)
+      assert(winner.getAs[Int]("priority") == 0) // absorbed CUSTOM:2 keeps its override priority
+      assert(winner.getAs[String]("source").contains("custom"))
       assert(
         winner.getAs[Seq[String]]("identifiers").toSet ==
           Set("NCBIGene:9001", "ENSEMBL:ENSG00000999999", "HGNC:9002", "CUSTOM:2")
@@ -81,6 +83,42 @@ object CliqueMergeSuite extends TestSuite {
       val r = CliqueMerge(df, Set.empty)
       assert(r.cliques.count() == 3)
       assert(r.merges.count() == 0)
+    }
+
+    test("narrow parquet boundaries preserve pure merge output and audit") {
+      val dir = os.temp.dir(prefix = "amalgam-merge-stages")
+      try {
+        val cliques = Registry.loadAll(
+          spark,
+          Registry.forConfig(
+            Some(TestSupport.miniSnapshot),
+            Some(TestSupport.customDir),
+            None,
+            TestSupport.promotePrefixes
+          )
+        )
+        val staged = CliqueMerge(
+          cliques,
+          TestSupport.majorTaxa,
+          (name, frame) => {
+            val path = dir / name
+            frame.write.parquet(path.toString)
+            spark.read.parquet(path.toString)
+          }
+        )
+        val normalized = (df: org.apache.spark.sql.DataFrame) =>
+          df
+            .withColumn("names", org.apache.spark.sql.functions.sort_array(org.apache.spark.sql.functions.col("names")))
+            .withColumn("taxa", org.apache.spark.sql.functions.sort_array(org.apache.spark.sql.functions.col("taxa")))
+            .withColumn(
+              "identifiers",
+              org.apache.spark.sql.functions.sort_array(org.apache.spark.sql.functions.col("identifiers"))
+            )
+        assert(normalized(staged.cliques).exceptAll(normalized(result.cliques)).count() == 0)
+        assert(normalized(result.cliques).exceptAll(normalized(staged.cliques)).count() == 0)
+        assert(staged.merges.exceptAll(result.merges).count() == 0)
+        assert(os.list(dir).map(_.last).toSet == Set("contested", "mergeable", "mapping"))
+      } finally os.remove.all(dir)
     }
 
     test("different taxon scope does not merge") {

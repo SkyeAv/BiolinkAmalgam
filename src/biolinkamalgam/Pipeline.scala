@@ -32,6 +32,18 @@ object Pipeline {
   )
 
   def run(spark: SparkSession, opts: Options): Seq[Manifest.Stage] = {
+    os.makeDir.all(opts.outDir / os.up)
+    val workspace = os.temp.dir(dir = opts.outDir / os.up, prefix = ".amalgam-stages-")
+    try runStaged(spark, opts, workspace)
+    finally os.remove.all(workspace)
+  }
+
+  private def runStaged(spark: SparkSession, opts: Options, workspace: os.Path): Seq[Manifest.Stage] = {
+    def materialize(name: String, df: org.apache.spark.sql.DataFrame): org.apache.spark.sql.DataFrame = {
+      val path = workspace / name
+      df.write.parquet(path.toString)
+      spark.read.parquet(path.toString)
+    }
     val stages = scala.collection.mutable.ListBuffer.empty[Manifest.Stage]
 
     def timed[A](name: String)(body: => (A, Long)): A = {
@@ -114,10 +126,11 @@ object Pipeline {
     // FileNotFoundException on shuffle_*.data, seen on the 2026jul22 full run).
     val auditLevel = org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK
     val (merged, merges) = timed("merge") {
-      val result = CliqueMerge(cliques, taxa.majorTaxa)
-      result.cliques.persist(auditLevel)
-      if (opts.audit) result.merges.persist(auditLevel)
-      (result.cliques, result.merges) -> result.cliques.count()
+      val result = CliqueMerge(cliques, taxa.majorTaxa, materialize)
+      // A durable boundary releases merge shuffle dependencies before arbitration/export. The narrow mapping
+      // and audit frame remain readable from workspace until the run completes, not from shuffle spill files.
+      val merged = materialize("merged", result.cliques)
+      (merged, result.merges) -> merged.count()
     }
 
     // [3]+[4] GATE (junk filters inside) + ARBITRATE — global synonym uniqueness.

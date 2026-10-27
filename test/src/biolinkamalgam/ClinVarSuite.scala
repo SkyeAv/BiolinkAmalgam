@@ -103,6 +103,10 @@ object ClinVarSuite extends TestSuite {
       val malformed =
         sample :+ Seq("15044", "Single nucleotide variant", "-", "9907", "not-a-number", "GRCh38", "15044")
       val variants = ClinVarSource.variants(raw(malformed))
+      val junk = Seq("NA", "N/A", ".", "null", "None", "unknown", "rs268").zipWithIndex.map { case (name, i) =>
+        Seq("1", "SNV", name, "9907", "268", "GRCh38", (900 + i).toString)
+      }
+      assert(ClinVarSource.variants(raw(junk)).collect().forall(r => r.getString(0) == r.getString(1)))
       assert(
         variants
           .filter(org.apache.spark.sql.functions.col("curie") === "CLINVAR:15044")

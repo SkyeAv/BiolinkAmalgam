@@ -42,6 +42,17 @@ object OboSourceSuite extends TestSuite {
       assert(cliques.filter(org.apache.spark.sql.functions.col("preferred_name").isNull).count() == 0)
     }
 
+    test("malformed upstream alt ids are warned and skipped, without discarding the term") {
+      val term = OboTerms
+        .parseTerms(
+          Iterator("[Term]", "id: TEST:1", "name: valid label", "alt_id: curators", "alt_id: TEST:2"),
+          _ => true
+        )
+        .next()
+      assert(term.name.contains("valid label"))
+      assert(term.altIds == Seq("TEST:2"))
+    }
+
     test("non-OBO files and invalid prefixes fail loudly") {
       val dir = os.temp.dir()
       try {

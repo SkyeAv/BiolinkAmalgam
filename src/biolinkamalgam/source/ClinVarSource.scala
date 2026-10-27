@@ -78,7 +78,8 @@ object ClinVarSource {
       .select(
         concat(lit("CLINVAR:"), col("VariationID")).as("curie"),
         when(
-          col("Name").isNotNull && !col("Name").isin("-", "na", "") &&
+          col("Name").isNotNull && !lower(trim(col("Name")))
+            .isin("-", "na", "n/a", ".", "null", "none", "unknown", "") &&
             !lower(col("Name")).rlike("^(dbsnp:)?rs[0-9]+$"),
           col("Name")
         )

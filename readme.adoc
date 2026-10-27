@@ -118,6 +118,8 @@ WBPhenotype, APO, TO, MAXO, HsapDv, MmusDv, ZFS, FBdv, WBls, MOD, TAXRANK,
 and FAO. The list records the Biolink class, taxa, PURL and OBO Foundry license.
 Only active own-prefix terms, names, EXACT synonyms and alt_ids enter cliques;
 BROAD/NARROW/RELATED synonyms and imported foreign-prefix terms are excluded.
+Malformed upstream alt_ids are logged and skipped (for example APO's `alt_id: curators`),
+not inserted as names or identifiers. Valid terms remain available.
 The config comments document gaps, including mixed-category ontologies and
 resources without a current OBO export. This is not complete Biolink coverage.
 
@@ -145,6 +147,22 @@ The existing BABEL/custom/GTDB ingest cache stays reusable. Additional sources
 are loaded as a small fresh layer each run. A prefix scan rejects overlapping
 core leaders rather than silently creating duplicate CURIEs. Use a new output
 directory for each run; sidecars from old runs are not a source of truth.
+
+=== Merge execution and benchmarking
+
+Merge computation materializes narrow contested rows, mergeable rows and the final
+loser-to-winner mapping as parquet before reusing them. Wide name payloads are
+fetched only after the mapping is settled. The merged table is also materialized
+before arbitration. Temporary stages live beside the output and are removed on
+normal completion or a caught failure; a killed JVM can leave `.amalgam-stages-*`
+directories that require manual cleanup after confirming the run has stopped.
+This bounds recomputation, not total input size. Provision scratch for shuffles
+and materialized data and measure representative samples before full builds.
+
+`make run ARGS="benchMerge --input <canonical-clique.parquet> --out <new-dir> --master local[8]"`
+exercises the same merge boundaries. It prints input/output/absorbed counts and
+elapsed milliseconds; the output retains stages for inspection. Sample whole
+preferred-name groups, not isolated rows, to preserve candidate density.
 
 === Conservative preferred-name merging
 

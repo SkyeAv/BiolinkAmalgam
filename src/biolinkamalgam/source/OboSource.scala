@@ -80,7 +80,9 @@ object OboTerms {
                   case "name" =>
                     require(name.isEmpty, s"duplicate OBO name for $id")
                     name = Some(unescape(value))
-                  case "alt_id" => aliases += value
+                  case "alt_id" =>
+                    if (value.matches("[A-Za-z][A-Za-z0-9_.-]*:[^\\s]+")) aliases += value
+                    else System.err.println(s"[obo] skipping malformed alt_id for ${id.getOrElse("unknown")}: $value")
                   case "synonym" =>
                     value match {
                       case SynonymQuoted(text, "EXACT") => exact += unescape(text)

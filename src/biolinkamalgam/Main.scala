@@ -317,6 +317,39 @@ object Main {
     } finally spark.stop()
   }
 
+  /** Benchmark a canonical clique parquet sample with the same narrow boundaries as production merging. */
+  @main def benchMerge(
+      input: String,
+      out: String,
+      taxaConfig: String = "config/taxa.yaml",
+      master: Option[String] = None,
+      profile: Option[String] = None
+  ): Unit = {
+    val dir = os.Path(out, os.pwd)
+    require(!os.exists(dir), s"benchmark output already exists: $dir")
+    os.makeDir.all(dir)
+    val (resolvedMaster, conf) = sparkSettings(profile, master)
+    val spark = SparkSupport.session("biolinkamalgam-merge-benchmark", resolvedMaster, conf)
+    try {
+      val start = System.nanoTime()
+      val cliques = spark.read.schema(biolinkamalgam.schema.Schemas.clique).parquet(os.Path(input, os.pwd).toString)
+      val result = biolinkamalgam.transform.CliqueMerge(
+        cliques,
+        Config.loadTaxa(os.Path(taxaConfig, os.pwd)).majorTaxa,
+        (name, frame) => {
+          val path = dir / name
+          frame.write.parquet(path.toString)
+          spark.read.parquet(path.toString)
+        }
+      )
+      result.cliques.write.parquet((dir / "merged").toString)
+      println(
+        s"merge benchmark: input=${cliques.count()} output=${spark.read.parquet((dir / "merged").toString).count()} " +
+          s"absorbed=${result.merges.count()} elapsed_ms=${(System.nanoTime() - start) / 1000000}"
+      )
+    } finally spark.stop()
+  }
+
   /** Typed crossref graph statistics, never equivalence or an automated deletion decision. */
   @main def crossrefs(
       out: String,

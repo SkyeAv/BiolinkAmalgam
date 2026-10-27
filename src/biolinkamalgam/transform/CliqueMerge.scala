@@ -45,7 +45,14 @@ object CliqueMerge {
     }
   }
 
-  def apply(cliques: DataFrame, majorTaxa: Set[String]): Result = {
+  /** materialize breaks the reused merge DAG at narrow boundaries. Pipeline supplies disk-backed parquet stages; tests
+    * can keep the pure default. Its owner must retain those stages until all returned frames are consumed.
+    */
+  def apply(
+      cliques: DataFrame,
+      majorTaxa: Set[String],
+      materialize: (String, DataFrame) => DataFrame = (_, df) => df
+  ): Result = {
     val scopeUdf = udf { taxa: Seq[String] =>
       Config.taxonScopes(Option(taxa).getOrElse(Seq.empty), majorTaxa)
     }
@@ -65,13 +72,26 @@ object CliqueMerge {
     // One row per (clique, scope); cliques with empty preferred names stay out of merging.
     val scoped = keyed
       .filter(length(col("pref_key")) > 0 && col("category") =!= "biolink:SequenceVariant")
-      .select("leader", "pref_key", "category", "taxa", "identifiers", "identifier_count", "priority", "name_count")
+      .select(
+        "leader",
+        "pref_key",
+        "category",
+        "taxa",
+        "identifiers",
+        "identifier_count",
+        "priority",
+        "source",
+        "name_count"
+      )
       .withColumn("taxon_scope", explode(scopeUdf(col("taxa"))))
 
     // Find contested KEYS before ranking; do not sort 140M singleton rows or shuffle synonym payloads.
     val groupSizes = scoped.groupBy(groupKeys.map(col): _*).count().filter(col("count") > 1)
     val win = Window.partitionBy(groupKeys.map(col): _*).orderBy(rank: _*)
-    val contested = scoped.join(groupSizes.drop("count"), groupKeys).withColumn("rn", row_number().over(win))
+    val contested = materialize(
+      "contested",
+      scoped.join(groupSizes.drop("count"), groupKeys).withColumn("rn", row_number().over(win))
+    )
 
     // Namespace veto: two cliques that both carry identifiers in some prefix but share none there are distinct
     // entities BABEL kept apart (two PUBCHEM.COMPOUND CIDs, two species' NCBIGene tRNA genes in __OTHER_TAXA__).
@@ -84,7 +104,7 @@ object CliqueMerge {
       .agg(collect_list(col("identifiers")).as("member_identifiers"))
       .filter(groupConflict(col("member_identifiers")))
       .select(groupKeys.map(col): _*)
-    val mergeable = contested.join(ambiguous, groupKeys, "left_anti")
+    val mergeable = materialize("mergeable", contested.join(ambiguous, groupKeys, "left_anti"))
 
     val loserLeaders = mergeable.filter(col("rn") > 1).select(col("leader")).distinct()
 
@@ -96,14 +116,14 @@ object CliqueMerge {
     // Pair each loser with the winners in its scope groups; keep the best-ranked winner.
     val loserCols = mergeable
       .filter(col("rn") > 1)
-      .join(keyed.select("leader", "names"), Seq("leader"))
       .select(
         col("leader").as("loser_leader"),
         col("pref_key"),
         col("category"),
         col("taxon_scope"),
-        col("names").as("loser_names"),
-        col("taxa").as("loser_taxa"),
+        col("name_count").as("loser_name_count"),
+        col("priority").as("loser_priority"),
+        col("source").as("loser_source"),
         col("identifiers").as("loser_identifiers"),
         col("identifier_count").as("loser_ids")
       )
@@ -130,7 +150,13 @@ object CliqueMerge {
         col("winner_priority").asc,
         col("winner_leader").asc
       )
-    val best = pairs.withColumn("pick", row_number().over(bestWin)).filter(col("pick") === 1)
+    val best = materialize(
+      "mapping",
+      pairs
+        .withColumn("pick", row_number().over(bestWin))
+        .filter(col("pick") === 1)
+        .drop("winner_identifiers", "loser_identifiers")
+    )
 
     val merges = best.select(
       col("pref_key").as("matched_preferred_name"),
@@ -141,16 +167,29 @@ object CliqueMerge {
       col("winner_id_count"),
       col("loser_ids").as("absorbed_id_count"),
       col("winner_name_count"),
-      size(col("loser_names")).as("absorbed_name_count")
+      col("loser_name_count").as("absorbed_name_count")
     )
 
     // Fold losers into winners.
+    // Fetch wide payload only for proven losers, once the narrow mapping is materialized.
     val absorbed = best
+      .select("loser_leader", "winner_leader", "loser_priority", "loser_source")
+      .join(
+        cliques.select(
+          col("leader").as("loser_leader"),
+          col("names").as("loser_names"),
+          col("taxa").as("loser_taxa"),
+          col("identifiers").as("loser_identifiers")
+        ),
+        Seq("loser_leader")
+      )
       .groupBy("winner_leader")
       .agg(
         flatten(collect_list("loser_names")).as("absorbed_names"),
         flatten(collect_list("loser_taxa")).as("absorbed_taxa"),
-        flatten(collect_list("loser_identifiers")).as("absorbed_identifiers")
+        flatten(collect_list("loser_identifiers")).as("absorbed_identifiers"),
+        min(col("loser_priority")).as("absorbed_priority"),
+        collect_set(col("loser_source")).as("absorbed_sources")
       )
 
     val allLosers = best.select(col("loser_leader").as("leader")).distinct()
@@ -171,8 +210,15 @@ object CliqueMerge {
         array_distinct(
           concat(col("identifiers"), coalesce(col("absorbed_identifiers"), array()))
         ).as("identifiers"),
-        col("source"),
-        col("priority")
+        concat_ws(
+          "+",
+          sort_array(
+            array_distinct(
+              concat(array(col("source")), coalesce(col("absorbed_sources"), array().cast("array<string>")))
+            )
+          )
+        ).as("source"),
+        least(col("priority"), coalesce(col("absorbed_priority"), col("priority"))).as("priority")
       )
       // The count is derived from the unioned identifier list, never summed:
       // loser and winner lists can overlap.
