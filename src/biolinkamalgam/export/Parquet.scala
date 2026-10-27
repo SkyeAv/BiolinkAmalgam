@@ -12,6 +12,15 @@ import org.apache.spark.sql.DataFrame
   */
 object Parquet {
 
+  /** Hadoop local files may carry a hidden checksum sibling; replacing data alone leaves stale checksums. */
+  private def replaceFile(source: os.Path, destination: os.Path): Unit = {
+    val sourceCrc = source / os.up / s".${source.last}.crc"
+    val destinationCrc = destination / os.up / s".${destination.last}.crc"
+    os.move(source, destination, replaceExisting = true)
+    if (os.exists(sourceCrc)) os.move(sourceCrc, destinationCrc, replaceExisting = true)
+    else os.remove(destinationCrc, checkExists = false)
+  }
+
   /** Write `df` as ONE parquet file at `out/biolinkamalgam.parquet` (zstd, sized row groups). */
   def writeSingleFile(df: DataFrame, destFile: os.Path, simple: Boolean = false): Unit = {
     val tmpDir = destFile / os.up / (destFile.last.stripSuffix(".parquet") + ".parts")
@@ -26,7 +35,7 @@ object Parquet {
         .option("compression", "zstd")
         .parquet(tmpDir.toString)
       val part = os.list(tmpDir).filter(_.last.endsWith(".parquet")).head
-      os.move(part, destFile, replaceExisting = true)
+      replaceFile(part, destFile)
       os.remove.all(tmpDir)
       return
     }
@@ -43,7 +52,7 @@ object Parquet {
       .sortBy(_.last)
 
     if (parts.length == 1) {
-      os.move(parts.head, destFile, replaceExisting = true)
+      replaceFile(parts.head, destFile)
       os.remove.all(tmpDir)
       return
     }
@@ -53,7 +62,7 @@ object Parquet {
       // and the previous deliverable remains intact until the complete footer has been written.
       val staged = tmpDir / "combined.parquet"
       binaryConcat(parts, staged)
-      os.move(staged, destFile, replaceExisting = true)
+      replaceFile(staged, destFile)
     } catch {
       case _: NoSuchMethodError | _: NoClassDefFoundError =>
         // parquet4j API drift — fall back to the single-writer path.

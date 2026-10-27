@@ -43,7 +43,14 @@ object ExportSuite extends TestSuite {
         val dest = dir / "biolinkamalgam.parquet"
         Parquet.writeSingleFile(sampleDf(100), dest)
         Parquet.writeSingleFile(sampleDf(12), dest)
-        assert(spark.read.parquet(dest.toString).count() == 12)
+        val replacement = spark.read.parquet(dest.toString)
+        assert(replacement.count() == 12)
+        // count() may read only footer metadata; force column pages to detect stale Hadoop .crc files.
+        assert(
+          replacement.select("CURIE").collect().map(_.getString(0)).toSet == (0 until 12).map(i => s"CURIE:$i").toSet
+        )
+        Parquet.writeSingleFile(sampleDf(7), dest, simple = true)
+        assert(spark.read.parquet(dest.toString).select("CURIE").collect().length == 7)
         assert(!os.exists(dir / "biolinkamalgam.parts"))
       } finally os.remove.all(dir)
     }
