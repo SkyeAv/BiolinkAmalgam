@@ -11,7 +11,8 @@ object OboTerms {
       exact: Seq[String],
       altIds: Seq[String],
       obsolete: Boolean,
-      replacedBy: Seq[String]
+      replacedBy: Seq[String],
+      xrefs: Seq[String] = Seq.empty
   )
 
   private val SynonymQuoted = """^"((?:\\.|[^"\\])*)"\s+(EXACT|BROAD|NARROW|RELATED)(?:\s.*)?$""".r
@@ -64,6 +65,7 @@ object OboTerms {
             val exact = scala.collection.mutable.ArrayBuffer.empty[String]
             val aliases = scala.collection.mutable.ArrayBuffer.empty[String]
             val replacements = scala.collection.mutable.ArrayBuffer.empty[String]
+            val xrefs = scala.collection.mutable.ArrayBuffer.empty[String]
             var obsolete = false
             while (input.hasNext && !input.head.trim.startsWith("[")) {
               val line = input.next()
@@ -89,7 +91,11 @@ object OboTerms {
                     require(Set("true", "false").contains(value), s"invalid is_obsolete: $line")
                     obsolete = value == "true"
                   case "replaced_by" => replacements += value
-                  case _             => ()
+                  // xref value is "CURIE" optionally followed by a quoted description; keep the CURIE only.
+                  case "xref" =>
+                    val curie = value.takeWhile(c => !c.isWhitespace)
+                    if (curie.matches("[A-Za-z][A-Za-z0-9_.-]*:[^\\s]+")) xrefs += curie
+                  case _ => ()
                 }
               }
             }
@@ -97,7 +103,15 @@ object OboTerms {
             pending = id
               .filter(idFilter)
               .map(i =>
-                Term(i, name, exact.toSeq.distinct, aliases.toSeq.distinct, obsolete, replacements.toSeq.distinct)
+                Term(
+                  i,
+                  name,
+                  exact.toSeq.distinct,
+                  aliases.toSeq.distinct,
+                  obsolete,
+                  replacements.toSeq.distinct,
+                  xrefs.toSeq.distinct
+                )
               )
           }
         }
@@ -113,12 +127,15 @@ object OboTerms {
   }
 }
 
-/** Parse on an executor, streaming each file; never collect ontology terms on the driver. */
+/** Parse on an executor, streaming each file; never collect ontology terms on the driver. Cliques carry only active
+  * own-prefix terms; `crossrefs` exposes xref and replaced_by as typed edges (never equivalence).
+  */
 class OboSource(file: os.Path, prefix: String, category: String, taxa: Seq[String] = Seq.empty)
     extends SynonymSource(s"obo:$prefix", priority = 10) {
   require(prefix.matches("[A-Za-z][A-Za-z0-9_-]*"), s"invalid OBO prefix: $prefix")
 
-  override def read(spark: SparkSession, path: os.Path): DataFrame = {
+  /** Every own-prefix term, obsolete ones included (replaced_by edges need them). */
+  def terms(spark: SparkSession): DataFrame = {
     val prefixKey = prefix.toLowerCase(java.util.Locale.ROOT) + ":"
     val rows = spark.sparkContext.binaryFiles(file.toString).flatMap { case (name, data) =>
       val stream = data.open()
@@ -133,21 +150,44 @@ class OboSource(file: os.Path, prefix: String, category: String, taxa: Seq[Strin
       require(formatSeen && lines.hasNext, s"not a term-bearing OBO document: $name")
       OboTerms
         .parseTerms(lines, _.toLowerCase(java.util.Locale.ROOT).startsWith(prefixKey))
-        .filterNot(_.obsolete)
-        .map(t => org.apache.spark.sql.Row(t.id, t.name.orNull, t.exact, t.altIds))
+        .map(t => org.apache.spark.sql.Row(t.id, t.name.orNull, t.exact, t.altIds, t.obsolete, t.replacedBy, t.xrefs))
     }
     import org.apache.spark.sql.types._
+    val strings = ArrayType(StringType, containsNull = false)
     spark.createDataFrame(
       rows,
       StructType(
         Seq(
           StructField("id", StringType, nullable = false),
           StructField("name", StringType),
-          StructField("exact", ArrayType(StringType, containsNull = false), nullable = false),
-          StructField("alt_ids", ArrayType(StringType, containsNull = false), nullable = false)
+          StructField("exact", strings, nullable = false),
+          StructField("alt_ids", strings, nullable = false),
+          StructField("obsolete", BooleanType, nullable = false),
+          StructField("replaced_by", strings, nullable = false),
+          StructField("xrefs", strings, nullable = false)
         )
       )
     )
+  }
+
+  override def read(spark: SparkSession, path: os.Path): DataFrame =
+    terms(spark).filter(!col("obsolete")).select("id", "name", "exact", "alt_ids")
+
+  /** Typed edges: `xref` (relevance only, OBO 1.4) and `replaced_by` (obsolete term -> successor). */
+  def crossrefs(spark: SparkSession, sample: Option[Long] = None): DataFrame = {
+    val all = terms(spark)
+    val t = sample.fold(all)(n => all.limit(n.toInt))
+    val xref =
+      t.select(col("id").as("subject"), explode(col("xrefs")).as("object")).withColumn("predicate", lit("xref"))
+    val replaced = t
+      .filter(col("obsolete"))
+      .select(col("id").as("subject"), explode(col("replaced_by")).as("object"))
+      .withColumn("predicate", lit("replaced_by"))
+    xref
+      .unionByName(replaced)
+      .withColumn("source", lit(name))
+      .select("subject", "predicate", "object", "source")
+      .distinct()
   }
 
   override def transform(raw: DataFrame): DataFrame = raw

@@ -1,115 +1,97 @@
-# INACTIVE source candidates, not consumed by Pipeline or Registry.
-# URLs, licenses, term-level classes and species coverage require verification before activation.
-# Ontology-wide categories below are provisional, especially MAXO/GENO NamedThing fallbacks.
-# No human review or license clearance is asserted. Generic xrefs never imply equivalence.
-# These candidates are not a claim of complete Biolink coverage.
+# OBO ontologies ingested with `--obo <dir>` (files fetched by scripts/fetch-obo.sh).
+# Every entry was checked on 2026-10-26 against:
+#   - Biolink Model 4.4.6 class id_prefixes (biolink-model.yaml): the category is the
+#     Biolink class that lists this prefix. Ontologies whose prefix maps to several
+#     unrelated classes are excluded rather than forced into one.
+#   - OBO Foundry registry (obofoundry.org/registry/ontologies.yml): license, active
+#     status, and the .obo product PURL.
+# Only active own-prefix terms with names, EXACT synonyms and alt_ids become cliques.
+# Generic xrefs and replaced_by are exported as typed edges in crossrefs.parquet, never
+# as equivalence. taxa puts species-specific ontologies into their own taxon scope so
+# e.g. mouse and zebrafish "abnormal heart" terms do not arbitrate against each other.
+# Taxa must be in taxa.yaml taxon_allowlist or the allowlist filter drops the terms.
 ontologies:
-  - prefix: MP
-    url: http://purl.obolibrary.org/obo/mp.obo
+  - prefix: MP # mammalian (mouse) phenotypes; Biolink: phenotypic feature (also disease)
+    url: https://purl.obolibrary.org/obo/mp.obo
     category: biolink:PhenotypicFeature
     license: CC-BY-4.0
     taxa: [NCBITaxon:10090]
-  - prefix: ZP
-    url: http://purl.obolibrary.org/obo/zp.obo
+  - prefix: ZP # zebrafish phenotypes
+    url: https://purl.obolibrary.org/obo/zp.obo
     category: biolink:PhenotypicFeature
     license: CC-BY-3.0
     taxa: [NCBITaxon:7955]
-  - prefix: FYPO
-    url: http://purl.obolibrary.org/obo/fypo.obo
+  - prefix: FYPO # fission yeast phenotypes
+    url: https://purl.obolibrary.org/obo/fypo.obo
     category: biolink:PhenotypicFeature
     license: CC-BY-4.0
     taxa: [NCBITaxon:4896]
-  - prefix: WBPhenotype
-    url: http://purl.obolibrary.org/obo/wbphenotype.obo
+  - prefix: WBPhenotype # C. elegans phenotypes
+    url: https://purl.obolibrary.org/obo/wbphenotype.obo
     category: biolink:PhenotypicFeature
     license: CC-BY-4.0
     taxa: [NCBITaxon:6239]
-  - prefix: XPO
-    url: http://purl.obolibrary.org/obo/xpo.obo
-    category: biolink:PhenotypicFeature
-    license: CC-BY-3.0
-    taxa: [NCBITaxon:8355]
-  - prefix: APO
-    url: http://purl.obolibrary.org/obo/apo.obo
+  - prefix: APO # ascomycete (yeast) phenotypes, multi-species
+    url: https://purl.obolibrary.org/obo/apo.obo
     category: biolink:PhenotypicFeature
     license: CC-BY-4.0
     taxa: []
-  - prefix: TO
-    url: http://purl.obolibrary.org/obo/to.obo
+  - prefix: TO # plant traits, multi-species
+    url: https://purl.obolibrary.org/obo/to.obo
     category: biolink:PhenotypicFeature
     license: CC-BY-4.0
     taxa: []
-  - prefix: MAXO
-    url: http://purl.obolibrary.org/obo/maxo.obo
-    category: biolink:NamedThing
+  - prefix: MAXO # medical actions; Biolink: procedure
+    url: https://purl.obolibrary.org/obo/maxo.obo
+    category: biolink:Procedure
     license: CC-BY-4.0
     taxa: []
-  - prefix: HsapDv
-    url: http://purl.obolibrary.org/obo/hsapdv.obo
+  - prefix: HsapDv # human developmental stages
+    url: https://purl.obolibrary.org/obo/hsapdv.obo
     category: biolink:LifeStage
     license: CC-BY-3.0
     taxa: [NCBITaxon:9606]
-  - prefix: MmusDv
-    url: http://purl.obolibrary.org/obo/mmusdv.obo
+  - prefix: MmusDv # mouse developmental stages
+    url: https://purl.obolibrary.org/obo/mmusdv.obo
     category: biolink:LifeStage
     license: CC-BY-3.0
     taxa: [NCBITaxon:10090]
-  - prefix: ZFS
-    url: http://purl.obolibrary.org/obo/zfs.obo
+  - prefix: ZFS # zebrafish stages
+    url: https://purl.obolibrary.org/obo/zfs.obo
     category: biolink:LifeStage
     license: CC-BY-3.0
     taxa: [NCBITaxon:7955]
-  - prefix: FBdv
-    url: http://purl.obolibrary.org/obo/fbdv.obo
+  - prefix: FBdv # Drosophila developmental stages
+    url: https://purl.obolibrary.org/obo/fbdv.obo
     category: biolink:LifeStage
     license: CC-BY-4.0
     taxa: [NCBITaxon:7227]
-  - prefix: WBls
-    url: http://purl.obolibrary.org/obo/wbls.obo
+  - prefix: WBls # C. elegans life stages
+    url: https://purl.obolibrary.org/obo/wbls.obo
     category: biolink:LifeStage
     license: CC-BY-4.0
     taxa: [NCBITaxon:6239]
-  - prefix: MOD
-    url: http://purl.obolibrary.org/obo/mod.obo
+  - prefix: MOD # PSI-MOD protein modifications; Biolink: posttranslational modification
+    url: https://purl.obolibrary.org/obo/mod.obo
     category: biolink:PosttranslationalModification
     license: CC-BY-4.0
     taxa: []
-  - prefix: TAXRANK
-    url: http://purl.obolibrary.org/obo/taxrank.obo
+  - prefix: TAXRANK # taxonomic ranks
+    url: https://purl.obolibrary.org/obo/taxrank.obo
     category: biolink:TaxonomicRank
     license: CC0-1.0
     taxa: []
-  - prefix: FBcv
-    url: http://purl.obolibrary.org/obo/fbcv.obo
-    category: biolink:PhenotypicFeature
-    license: CC-BY-4.0
-    taxa: [NCBITaxon:7227]
-  - prefix: GENO
-    url: http://purl.obolibrary.org/obo/geno.obo
-    category: biolink:NamedThing
-    license: CC-BY-4.0
-    taxa: []
-  - prefix: PO
-    url: http://purl.obolibrary.org/obo/po.obo
-    category: biolink:AnatomicalEntity
-    license: CC-BY-4.0
-    taxa: []
-  - prefix: FAO
-    url: http://purl.obolibrary.org/obo/fao.obo
-    category: biolink:AnatomicalEntity
+  - prefix: FAO # fungal gross anatomy
+    url: https://purl.obolibrary.org/obo/fao.obo
+    category: biolink:GrossAnatomicalStructure
     license: CC0-1.0
     taxa: []
-  - prefix: UPHENO
-    url: http://purl.obolibrary.org/obo/upheno.obo
-    category: biolink:PhenotypicFeature
-    license: CC0-1.0
-    taxa: []
-  - prefix: UNIMOD
-    url: http://www.unimod.org/obo/unimod.obo
-    category: biolink:PosttranslationalModification
-    license: public-domain-copyleft
-    taxa: []
-# Not included, with reasons (keep this section current):
-#   HANCESTRO - no OBO PURL (OWL only).       EDAM - PURL dead; repo release not pinned.
-#   FOODON    - PURL serves a stale 2016 OBO stub. GO/CL/UBERON/HP/MONDO etc - already in BABEL.
-#   full dbSNP b157 VCF - 28G, ~1.2B records; deferred pending evidence of need; ClinVar covers curated rsIDs.
+# Excluded, with reasons (keep current):
+#   XPO      - Xenopus taxon 8355 is not in the current allowlist; do not hide its species as taxonless.
+#   GENO     - Biolink maps the prefix only to "genetic inheritance"; most terms are not that.
+#   PO, FBcv - one prefix spans several Biolink classes (structures + stages / mixed CVs).
+#   UPHENO   - no .obo product in the OBO Foundry registry.
+#   UNIMOD   - not in the OBO Foundry registry; license not verified.
+#   HANCESTRO, EDAM, FOODON - no current OBO release at the PURL.
+#   GO, CL, UBERON, HP, MONDO, ... - already present in BABEL.
+#   full dbSNP (b157, 28G VCF, ~1.2B rsIDs) - deferred; --clinvar covers ClinVar-cited rsIDs.

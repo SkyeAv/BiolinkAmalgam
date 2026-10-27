@@ -16,7 +16,9 @@ object Registry {
       babelDir: Option[os.Path],
       customDir: Option[os.Path],
       gtdbDir: Option[os.Path],
-      promotePrefixes: Set[String]
+      promotePrefixes: Set[String],
+      clinvarFile: Option[os.Path] = None,
+      obo: Option[(os.Path, Seq[OboRegistry.Entry])] = None
   ): Seq[(SynonymSource, os.Path)] = {
     val babel = babelDir.toSeq.flatMap { dir =>
       Seq(
@@ -37,7 +39,26 @@ object Registry {
     }
     // GTDB metadata (BABEL PR #978 port): taxon cliques + NCBITaxon species crossrefs.
     val gtdb = gtdbDir.toSeq.filter(os.exists(_)).map(dir => (new GtdbSource: SynonymSource) -> dir)
-    babel ++ custom ++ manual ++ gtdb
+    // ClinVar: separate CLINVAR allele and DBSNP rs locus cliques (biolink:SequenceVariant).
+    val clinvar = clinvarFile.toSeq.map(f => (new ClinVarSource(f): SynonymSource) -> f)
+    // Reviewed OBO ontologies (config/obo_sources.yaml); a missing file for a listed prefix fails.
+    val ontologies = obo.toSeq.flatMap { case (dir, entries) =>
+      OboRegistry.sources(dir, entries).map(s => (s: SynonymSource) -> dir)
+    }
+    babel ++ custom ++ manual ++ gtdb ++ clinvar ++ ontologies
+  }
+
+  /** Typed crossref edges from every edge-bearing source (subject, predicate, object, source). Never equivalence. */
+  def crossrefs(
+      spark: SparkSession,
+      sources: Seq[(SynonymSource, os.Path)],
+      sample: Option[Long] = None
+  ): Option[DataFrame] = {
+    val frames = sources.collect {
+      case (c: ClinVarSource, _) => c.crossrefs(spark, sample)
+      case (o: OboSource, _)     => o.crossrefs(spark, sample)
+    }
+    frames.reduceOption(_ unionByName _)
   }
 
   /** Union of all source outputs in canonical clique shape, consolidated by leader: BABEL's compendium and synonym rows

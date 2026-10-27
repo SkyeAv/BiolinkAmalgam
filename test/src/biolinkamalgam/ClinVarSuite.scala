@@ -42,6 +42,7 @@ object ClinVarSuite extends TestSuite {
       assert(rows("CLINVAR:15041")._1.contains("AP5Z1"))
       assert(rows("CLINVAR:15042")._2.isEmpty)
       assert(rows("CLINVAR:15043")._2.contains("rs268"))
+      assert(rows("CLINVAR:15043")._1 == "CLINVAR:15043") // rs label belongs to the locus, not an allele
     }
 
     test("each allele and each rsID becomes its own sequence variant clique") {

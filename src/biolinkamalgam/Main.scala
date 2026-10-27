@@ -48,6 +48,9 @@ object Main {
       sample: Option[Long] = None,
       ingestCache: Option[String] = None,
       gtdb: Option[String] = None,
+      clinvar: Option[String] = None,
+      obo: Option[String] = None,
+      oboConfig: String = "config/obo_sources.yaml",
       audit: mainargs.Flag = mainargs.Flag(false),
       simpleExport: mainargs.Flag = mainargs.Flag(false)
   ): Unit = {
@@ -76,6 +79,9 @@ object Main {
           babelDir = babelDir,
           customDir = custom.map(d => os.Path(d, os.pwd)),
           gtdbDir = gtdb.map(d => os.Path(d, os.pwd)),
+          clinvarFile = clinvar.map(f => os.Path(f, os.pwd)),
+          oboDir = obo.map(d => os.Path(d, os.pwd)),
+          oboConfig = Some(os.Path(oboConfig, os.pwd)),
           outDir = os.Path(out, os.pwd),
           taxaConfig = os.Path(taxaConfig, os.pwd),
           promoteConfig = os.Path(promoteConfig, os.pwd),
@@ -87,7 +93,9 @@ object Main {
           datasetMeta = Map(
             "babel" -> download.getOrElse(babel.map(d => s"local:$d").getOrElse("none")),
             "custom" -> custom.getOrElse("none"),
-            "gtdb" -> gtdb.getOrElse("none")
+            "gtdb" -> gtdb.getOrElse("none"),
+            "clinvar" -> clinvar.getOrElse("none"),
+            "obo" -> obo.getOrElse("none")
           )
         )
       )
@@ -306,6 +314,32 @@ object Main {
       flagged.unpersist(blocking = false)
       scored.unpersist(blocking = false)
       println("report only: dataset unchanged; flags are not proof of incorrectness")
+    } finally spark.stop()
+  }
+
+  /** Typed crossref graph statistics, never equivalence or an automated deletion decision. */
+  @main def crossrefs(
+      out: String,
+      top: Int = 200,
+      master: Option[String] = None,
+      profile: Option[String] = None
+  ): Unit = {
+    require(top >= 1 && top <= 10000, "top must be 1-10000")
+    val (resolvedMaster, conf) = sparkSettings(profile, master)
+    val spark = SparkSupport.session("biolinkamalgam-crossrefs", resolvedMaster, conf)
+    try {
+      val dir = os.Path(out, os.pwd)
+      val edges = biolinkamalgam.transform.CrossrefAnalysis
+        .edges(spark.read.parquet((dir / "crossrefs.parquet").toString))
+        .persist(org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK)
+      val report = dir / "crossref-report"
+      os.makeDir.all(report)
+      biolinkamalgam.export.Tsv
+        .writeSingleFile(biolinkamalgam.transform.CrossrefAnalysis.summary(edges), report / "summary.tsv")
+      biolinkamalgam.export.Tsv
+        .writeSingleFile(biolinkamalgam.transform.CrossrefAnalysis.highDegree(edges, top), report / "degree.tsv")
+      edges.unpersist(blocking = false)
+      println(s"crossref report: $report (typed associations; high degree is not proof of error)")
     } finally spark.stop()
   }
 

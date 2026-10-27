@@ -9,6 +9,10 @@ import org.apache.spark.sql.{DataFrame, SparkSession}
 class ClinVarSource(file: os.Path) extends SynonymSource("clinvar", priority = 10) {
   override def read(spark: SparkSession, path: os.Path): DataFrame = ClinVarSource.readSummary(spark, file)
 
+  /** Typed variant edges for the crossref sidecar. */
+  def crossrefs(spark: SparkSession, sample: Option[Long] = None): DataFrame =
+    ClinVarSource.crossrefs(sampledRead(spark, file, sample))
+
   override def transform(raw: DataFrame): DataFrame = {
     val variants = ClinVarSource.variants(raw)
     val alleles = variants
@@ -49,7 +53,8 @@ object ClinVarSource {
     val header =
       try Option(reader.readLine()).getOrElse(throw new IllegalArgumentException(s"empty ClinVar file: $file"))
       finally reader.close()
-    val columns = header.split("\t", -1).toSeq
+    // The real header starts with "#AlleleID"; drop the comment marker from the first column name.
+    val columns = header.stripPrefix("#").split("\t", -1).toSeq
     require(
       Required.subsetOf(columns.toSet),
       s"ClinVar file missing columns: ${(Required -- columns.toSet).toSeq.sorted.mkString(", ")}"
@@ -72,7 +77,11 @@ object ClinVarSource {
       .filter(col("VariationID").rlike("^[1-9][0-9]*$"))
       .select(
         concat(lit("CLINVAR:"), col("VariationID")).as("curie"),
-        when(col("Name").isNotNull && !col("Name").isin("-", "na", ""), col("Name"))
+        when(
+          col("Name").isNotNull && !col("Name").isin("-", "na", "") &&
+            !lower(col("Name")).rlike("^(dbsnp:)?rs[0-9]+$"),
+          col("Name")
+        )
           .otherwise(concat(lit("CLINVAR:"), col("VariationID")))
           .as("label"),
         when(col("RS# (dbSNP)").rlike("^[1-9][0-9]*$"), concat(lit("rs"), col("RS# (dbSNP)"))).as("rs"),

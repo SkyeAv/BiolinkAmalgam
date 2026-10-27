@@ -53,7 +53,7 @@ api.upload_folder(
     folder_path=out,
     repo_id=repo,
     repo_type="dataset",
-    allow_patterns=["biolinkamalgam.parquet", "README.md"],
+    allow_patterns=["biolinkamalgam.parquet", "crossrefs.parquet", "README.md"],
     commit_message="Publish BiolinkAmalgam build",
 )
 print(f"published https://huggingface.co/datasets/{repo}")

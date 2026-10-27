@@ -158,3 +158,15 @@ name "Escherichia coli"). Species with an `ncbi_species_taxid` crossref into the
 has no identifiers column, so the crossref rides in SYNONYMS like INCHIKEY promotion) —
 AT MOST ONE GTDB species per NCBI species taxid (alphabetically first wins); the rest
 stay GTDB singletons, because two GTDB species sharing one taxid must never merge.
+
+## Additional sources and conservative merges
+
+- `--clinvar <variant_summary.txt.gz>` adds separate CLINVAR variations and DBSNP rs loci; one rsID may reference
+  multiple alleles. SequenceVariant cliques never merge by preferred name.
+- `scripts/fetch-obo.sh <dir>` downloads `config/obo_sources.yaml`; `--obo <dir>` adds active own-prefix terms, EXACT
+  synonyms and alt_ids. Config categories/licenses checked against Biolink 4.4.6 and OBO Foundry; gaps documented there.
+- `crossrefs.parquet` carries typed associations (`subject,predicate,object,source`), not equivalence. Edges retain
+  pre-merge source ids. No xref or gene association enters synonyms or merges.
+- Core ingest cache excludes additive ClinVar/OBO; a prefix clash fails loudly. Additional sources are fresh each run.
+- CliqueMerge vetoes any preferred-name group with disjoint identifiers under a shared namespace. Distinct PubChem CIDs
+  or species-specific NCBIGene ids must not merge because of labels alone.

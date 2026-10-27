@@ -42,9 +42,48 @@ object DatasetCard {
           |synonym; at most one GTDB species per NCBI species — many-to-one mappings stay singletons).
           |
           |""".stripMargin
+    val clinvar = meta.getOrElse("clinvar", "none")
+    val obo = meta.getOrElse("obo", "none")
+    val extraPara =
+      (if (clinvar == "none") ""
+       else
+         """|ClinVar `variant_summary` contributes `biolink:SequenceVariant` cliques: one `CLINVAR:` row per
+            |variation and one `DBSNP:rs...` row per referenced rsID. An rsID can denote several alleles, so the
+            |two are never merged; their links live in `crossrefs.parquet`.
+            |
+            |""".stripMargin) +
+        (if (obo == "none") ""
+         else
+           """|Additional OBO ontologies not in BABEL (`config/obo_sources.yaml`: MP, ZP, FYPO, WBPhenotype,
+              |APO, TO, MAXO, HsapDv, MmusDv, ZFS, FBdv, WBls, MOD, TAXRANK, FAO) contribute active own-prefix
+              |terms with their names, EXACT synonyms and alt_ids; BROAD/NARROW/RELATED synonyms are excluded.
+              |
+              |""".stripMargin)
+    val crossrefSection =
+      if (clinvar == "none" && obo == "none") ""
+      else
+        """|
+           |## crossrefs.parquet
+           |
+           |Typed associations, NOT equivalences: `subject, predicate, object, source` with predicates
+           |`dbsnp_reference` (ClinVar variation -> rsID), `gene_association` (ClinVar variation -> NCBIGene),
+           |`xref` (OBO term cross-reference; relevance only per OBO 1.4) and `replaced_by` (obsolete OBO term ->
+           |successor).
+           |""".stripMargin
+    val extraLicense =
+      (if (clinvar == "none") "" else "\nClinVar and dbSNP are NCBI public-domain data.") +
+        (if (obo == "none") ""
+         else
+           "\nOBO ontologies carry CC-BY-3.0, CC-BY-4.0 or CC0-1.0 terms per ontology (see config/obo_sources.yaml).")
 
     s"""---
        |pretty_name: BiolinkAmalgam
+       |configs:
+       |  - config_name: default
+       |    default: true
+       |    data_files:
+       |      - split: train
+       |        path: biolinkamalgam.parquet
        |license: other
        |license_name: babel-upstream-licenses
        |task_categories:
@@ -65,7 +104,7 @@ object DatasetCard {
        |Biomedical entity synonym cliques built from [BABEL](https://github.com/TranslatorSRI/Babel)
        |compendia and synonyms (snapshot: `$babel`), merged and arbitrated so that
        |**within a (class, taxon scope), a synonym belongs to exactly one CURIE**.
-       |${gtdbPara}Synonyms are the ORIGINAL strings with junk filtered out (see below); normalization
+       |${gtdbPara}${extraPara}Synonyms are the ORIGINAL strings with junk filtered out (see below); normalization
        |(stemming, level keys) is deliberately left to downstream consumers.
        |
        |## Schema
@@ -78,7 +117,7 @@ object DatasetCard {
        || `PREFERRED_NAME` | string | the clique's preferred name, as written |
        || `CLASS` | string | Biolink category, e.g. `biolink:Gene` |
        || `SYNONYMS` | list<string> | synonyms as originally written, sorted; a synonym appears in at most one row per (class, taxon scope) |
-       |
+       |$crossrefSection
        |## What was filtered
        |
        |- `biolink:Publication` and `biolink:Agent` cliques (titles and leftover-UMLS organizations).
@@ -113,7 +152,7 @@ object DatasetCard {
        |(UMLS content in particular requires a UMLS license). This dataset inherits those
        |upstream terms; check the [BABEL license summary](https://github.com/TranslatorSRI/Babel)
        |for your intended use.${if (gtdb == "none") ""
-      else "\nGTDB data are CC-BY-SA-4.0 (share-alike); GTDB-derived taxa carry those terms."}
+      else "\nGTDB data are CC-BY-SA-4.0 (share-alike); GTDB-derived taxa carry those terms."}$extraLicense
        |""".stripMargin
   }
 

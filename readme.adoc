@@ -104,24 +104,56 @@ Drop files into a directory and pass `--custom <dir>`:
 
 For anything more complex, subclass `SynonymSource` and add one line to `Registry.forConfig`.
 
-=== Additional source adapters (not activated)
+=== Additional sources and typed crossrefs
 
-`ClinVarSource` reads the NCBI `variant_summary.txt[.gz]` header explicitly,
-deduplicates assembly rows, and emits separate `CLINVAR:` variant and `DBSNP:rs`
-locus cliques. A locus can reference several alleles; `crossrefs` returns typed
-`dbsnp_reference` and `gene_association` edges, not equivalence claims. Gene and
-disease labels never become variant synonyms. Preferred-name merging excludes
-`biolink:SequenceVariant` because label equality does not establish allele identity.
-This adapter covers only rsIDs present in the supplied ClinVar file, not all dbSNP.
+`--clinvar <variant_summary.txt.gz>` adds NCBI ClinVar variations and the rsIDs
+referenced by those variations. It does not claim exhaustive dbSNP coverage.
+Each `CLINVAR:` variation and each `DBSNP:rs...` locus stays a separate
+`biolink:SequenceVariant` clique: one rsID can reference several alleles. Gene
+and disease annotations never become variant synonyms.
 
-`OboSource` streams OBO files (including gzip), admits active own-prefix terms,
-names, EXACT synonyms and `alt_id` aliases, and preserves configured taxa. It
-ignores BROAD/NARROW/RELATED synonyms, generic xrefs and obsolete terms. It does
-not yet export ontology graph edges. Imported foreign-prefix terms are skipped.
+`scripts/fetch-obo.sh <dir>` downloads the reviewed `config/obo_sources.yaml`
+list. Pass `--obo <dir> [--obo-config <yaml>]` to ingest it: MP, ZP, FYPO,
+WBPhenotype, APO, TO, MAXO, HsapDv, MmusDv, ZFS, FBdv, WBls, MOD, TAXRANK,
+and FAO. The list records the Biolink class, taxa, PURL and OBO Foundry license.
+Only active own-prefix terms, names, EXACT synonyms and alt_ids enter cliques;
+BROAD/NARROW/RELATED synonyms and imported foreign-prefix terms are excluded.
+The config comments document gaps, including mixed-category ontologies and
+resources without a current OBO export. This is not complete Biolink coverage.
 
-Neither adapter is wired into the production CLI yet. `config/obo_sources.yaml`
-is an inactive candidate list with provisional categories and license fields;
-it must not be treated as a verified coverage or redistribution manifest.
+When either source is enabled, `crossrefs.parquet` is written beside the main
+parquet, with columns `subject, predicate, object, source`. Predicates are:
+
+- `dbsnp_reference`: ClinVar variation to dbSNP locus (many-to-many).
+- `gene_association`: ClinVar variation to NCBIGene.
+- `xref`: OBO cross-reference (relevance only, not equivalence).
+- `replaced_by`: obsolete OBO term to its successor.
+
+Edges retain source CURIEs, not post-merge leaders; an obsolete term may appear
+only in the sidecar. No crossref is used as a synonym or merge key. The dataset
+card selects only `biolinkamalgam.parquet` for the default Hugging Face config;
+read the sidecar separately. `publish-hf.sh` uploads both files when present.
+
+`make run ARGS="crossrefs --out <run> --top 200 --profile wenceslaus"` writes
+`crossref-report/summary.tsv` (edge and distinct-node counts by predicate, source
+and namespace pair) and `degree.tsv` (bounded inbound/outbound high-degree nodes
+per predicate). Degree counts distinct neighbors, not independent evidence or
+error probabilities. Predicates never mix; no components are merged. This first
+report does not compute statistical confidence, source independence or precision.
+
+The existing BABEL/custom/GTDB ingest cache stays reusable. Additional sources
+are loaded as a small fresh layer each run. A prefix scan rejects overlapping
+core leaders rather than silently creating duplicate CURIEs. Use a new output
+directory for each run; sidecars from old runs are not a source of truth.
+
+=== Conservative preferred-name merging
+
+Equal labels do not prove identity. `biolink:SequenceVariant` cliques never merge
+by preferred name. Other preferred-name groups stay separate when members use
+the same identifier prefix but share no identifier under it (for example, two
+PubChem CIDs with the label "Cobalt;erbium"). An ambiguous group does not choose
+an arbitrary target for a third clique. Distinct CURIEs still arbitrate shared
+names within class and taxon scope, and rows with empty synonyms survive.
 
 === Synonym diagnostics (report only)
 

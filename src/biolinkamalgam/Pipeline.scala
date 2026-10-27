@@ -25,7 +25,10 @@ object Pipeline {
       sample: Option[Long] = None,
       ingestCache: Option[os.Path] = None,
       gtdbDir: Option[os.Path] = None,
-      audit: Boolean = false
+      audit: Boolean = false,
+      clinvarFile: Option[os.Path] = None,
+      oboDir: Option[os.Path] = None,
+      oboConfig: Option[os.Path] = None
   )
 
   def run(spark: SparkSession, opts: Options): Seq[Manifest.Stage] = {
@@ -48,7 +51,16 @@ object Pipeline {
     // keep the fingerprint (same snapshot files + same ingest-affecting config)
     // read it back in seconds instead of re-parsing 100GB+. Name-level gates
     // live in [3]+[4], so filters.yaml *gate* edits never invalidate the cache.
-    val cliques = timed("ingest") {
+    val oboEntries = opts.oboDir.map { dir =>
+      dir -> source.OboRegistry.entries(opts.oboConfig.getOrElse(os.pwd / "config" / "obo_sources.yaml"))
+    }
+    // Additive sources (ClinVar, OBO) are small and loaded fresh every run, so the multi-GB core ingest cache
+    // (BABEL + custom + GTDB) keeps its fingerprint and stays a cache hit when they are added or updated.
+    val extraSources = Registry.forConfig(None, None, None, promotePrefixes, opts.clinvarFile, oboEntries)
+    val extraPrefixes =
+      (opts.clinvarFile.toSeq.flatMap(_ => Seq("CLINVAR", "DBSNP")) ++ oboEntries.toSeq.flatMap(_._2.map(_.prefix)))
+
+    val coreCliques = timed("ingest") {
       val sources = Registry.forConfig(opts.babelDir, opts.customDir, opts.gtdbDir, promotePrefixes)
       val fresh = () => Filters(Registry.loadAll(spark, sources, opts.sample), filters, taxa.allowlist)
       opts.ingestCache match {
@@ -71,6 +83,29 @@ object Pipeline {
           }
       }
     }
+
+    var extraCliques: Option[org.apache.spark.sql.DataFrame] = None
+    val cliques =
+      if (extraSources.isEmpty) coreCliques
+      else
+        timed("ingest_extra") {
+          val extra = Filters(Registry.loadAll(spark, extraSources, opts.sample), filters, taxa.allowlist)
+            .persist(org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK)
+          extraCliques = Some(extra)
+          // Leaders are folded per source, so the union is only correct if no core leader uses an extra prefix.
+          // A column-pruned prefix scan of the cache proves it in seconds instead of re-consolidating 140M rows.
+          val clash = coreCliques
+            .filter(
+              org.apache.spark.sql.functions
+                .split(org.apache.spark.sql.functions.col("leader"), ":")(0)
+                .isin(extraPrefixes: _*)
+            )
+            .limit(1)
+            .count()
+          require(clash == 0, s"core sources already carry leaders with prefixes ${extraPrefixes.mkString(",")}")
+          val df = coreCliques.unionByName(extra)
+          (df, extra.count())
+        }
 
     // [2] MERGE CLIQUES — preferred-name string matching, scoped by (category, taxon).
     // Every DataFrame consumed by [5] is persisted: export runs long after these
@@ -111,9 +146,26 @@ object Pipeline {
               pool.submit[Unit](() => Tsv.writeSingleFile(merges, opts.outDir / "merges.tsv"))
             )
           else Seq.empty
+        // Typed crossref sidecar (subject, predicate, object, source): xref / replaced_by / dbsnp_reference /
+        // gene_association. Separate file because these are associations, not synonyms or equivalence.
+        val crossrefFut = Registry.crossrefs(spark, extraSources, opts.sample).map { edges =>
+          pool.submit[Unit](() =>
+            Parquet.writeSingleFile(
+              edges.orderBy("subject", "predicate", "object"),
+              opts.outDir / "crossrefs.parquet",
+              opts.simpleExport
+            )
+          )
+        }
         parquetFut.get()
         auditFuts.foreach(_.get())
-        DatasetCard.write(opts.outDir, "biolinkamalgam.parquet", stages.toSeq, opts.datasetMeta)
+        crossrefFut.foreach(_.get())
+        if (crossrefFut.isEmpty) os.remove(opts.outDir / "crossrefs.parquet", checkExists = false)
+        val sourceMeta = opts.datasetMeta ++ Map(
+          "clinvar" -> opts.clinvarFile.map(_.toString).getOrElse("none"),
+          "obo" -> opts.oboDir.map(_.toString).getOrElse("none")
+        )
+        DatasetCard.write(opts.outDir, "biolinkamalgam.parquet", stages.toSeq, sourceMeta)
         () -> output.count()
       } finally {
         pool.shutdown()
@@ -122,6 +174,7 @@ object Pipeline {
     }
 
     Seq(merged, output, merges, conflicts).foreach(_.unpersist(blocking = false))
+    extraCliques.foreach(_.unpersist(blocking = false))
     stages.toSeq
   }
 

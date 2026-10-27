@@ -100,6 +100,15 @@ object OboSourceSuite extends TestSuite {
         assert(entries.map(_.prefix) == Seq("TEST"))
         val sources = biolinkamalgam.source.OboRegistry.sources(dir, entries)
         assert(sources.map(_.name) == Seq("obo:TEST"))
+        os.copy(obo, dir / "test.obo.gz")
+        assertThrows[IllegalArgumentException](biolinkamalgam.source.OboRegistry.sources(dir, entries))
+        os.remove(dir / "test.obo.gz")
+        os.write(
+          dir / "duplicate.yaml",
+          os.read(cfg) + "  - prefix: test\n    url: http://example.org/2.obo\n" +
+            "    category: biolink:PhenotypicFeature\n    license: CC0-1.0\n    taxa: []\n"
+        )
+        assertThrows[IllegalArgumentException](biolinkamalgam.source.OboRegistry.entries(dir / "duplicate.yaml"))
         os.remove(dir / "test.obo")
         assertThrows[IllegalArgumentException](biolinkamalgam.source.OboRegistry.sources(dir, entries))
         os.write(dir / "bad.yaml", "ontologies:\n  - prefix: X\n    bogus: 1\n")

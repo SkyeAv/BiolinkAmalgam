@@ -9,6 +9,7 @@ alt_id: TEST:9000001
 synonym: "test process exact variant" EXACT []
 synonym: "test process broad variant" BROAD []
 synonym: "test process related variant" RELATED []
+xref: MESH:D000001 "a description"
 is_a: TEST:0000000 ! thing
 
 [Term]
