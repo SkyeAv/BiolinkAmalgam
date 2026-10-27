@@ -176,8 +176,10 @@ stay GTDB singletons, because two GTDB species sharing one taxid must never merg
   multiple alleles. SequenceVariant cliques never merge by preferred name.
 - `scripts/fetch-obo.sh <dir>` downloads `config/obo_sources.yaml`; `--obo <dir>` adds active own-prefix terms, EXACT
   synonyms and alt_ids. Config categories/licenses checked against Biolink 4.4.6 and OBO Foundry; gaps documented there.
-- `crossrefs.parquet` carries typed associations (`subject,predicate,object,source`), not equivalence. Edges retain
-  pre-merge source ids. No xref or gene association enters synonyms or merges.
+- Typed associations (`subject,predicate,object,source`) are written one file per predicate as
+  `crossrefs/<predicate>.parquet`, each its own HF config `crossrefs_<predicate>` (train split), so consumers choose
+  which edge types to conflate. Not equivalence; edges retain pre-merge source ids. No xref or gene association
+  enters synonyms or merges in the main parquet.
 - Core ingest cache excludes additive ClinVar/OBO; a prefix clash fails loudly. Additional sources are fresh each run.
 - CliqueMerge vetoes any preferred-name group with disjoint identifiers under a shared namespace. Distinct PubChem CIDs
   or species-specific NCBIGene ids must not merge because of labels alone.

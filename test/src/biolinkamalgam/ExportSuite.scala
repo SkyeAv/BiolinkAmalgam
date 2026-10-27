@@ -80,6 +80,30 @@ object ExportSuite extends TestSuite {
       assert(card.contains("Generated 2026-01-01"))
       assert(!card.contains("null"))
 
+      assert(!card.contains("crossrefs_")) // no edges => only the default config
+
+      val withEdges = DatasetCard.render(
+        "biolinkamalgam.parquet",
+        Seq(Manifest.Stage("arbitrate", 9, 50)),
+        Map("babel" -> "test-snapshot", "clinvar" -> "vs.txt"),
+        "2026-01-01",
+        crossrefPredicates = Seq("xref", "dbsnp_reference")
+      )
+      val frontmatter = withEdges.split("\n---\n", 2).head
+      // default config first and still the default; one train-split config per predicate, sorted
+      assert(frontmatter.indexOf("config_name: default") < frontmatter.indexOf("config_name: crossrefs_"))
+      assert(
+        frontmatter.contains(
+          "  - config_name: crossrefs_dbsnp_reference\n    data_files:\n      - split: train\n" +
+            "        path: crossrefs/dbsnp_reference.parquet"
+        )
+      )
+      assert(frontmatter.indexOf("crossrefs_dbsnp_reference") < frontmatter.indexOf("crossrefs_xref"))
+      assert(withEdges.contains("load_dataset(\"SkyeAv/biolink-amalgam\", \"crossrefs_xref\", split=\"train\")"))
+      assertThrows[IllegalArgumentException](
+        DatasetCard.render("b.parquet", Seq.empty, Map.empty, "2026-01-01", crossrefPredicates = Seq("../x"))
+      )
+
       assert(DatasetCard.sizeCategory(0) == "n<1K")
       assert(DatasetCard.sizeCategory(999) == "n<1K")
       assert(DatasetCard.sizeCategory(1500) == "1K<n<10K")

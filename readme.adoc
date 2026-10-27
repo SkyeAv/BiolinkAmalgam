@@ -133,8 +133,11 @@ not inserted as names or identifiers. Valid terms remain available.
 The config comments document gaps, including mixed-category ontologies and
 resources without a current OBO export. This is not complete Biolink coverage.
 
-When either source is enabled, `crossrefs.parquet` is written beside the main
-parquet, with columns `subject, predicate, object, source`. Predicates are:
+When either source is enabled, typed edges are written beside the main parquet,
+one file per predicate: `crossrefs/<predicate>.parquet`, columns
+`subject, predicate, object, source`. The dataset card declares each file as its own
+Hugging Face config `crossrefs_<predicate>` with a `train` split, so you pick which
+edge types to conflate. Predicates are:
 
 - `dbsnp_reference`: ClinVar variation to dbSNP locus (many-to-many).
 - `gene_association`: ClinVar variation to NCBIGene.
@@ -142,9 +145,16 @@ parquet, with columns `subject, predicate, object, source`. Predicates are:
 - `replaced_by`: obsolete OBO term to its successor.
 
 Edges retain source CURIEs, not post-merge leaders; an obsolete term may appear
-only in the sidecar. No crossref is used as a synonym or merge key. The dataset
-card selects only `biolinkamalgam.parquet` for the default Hugging Face config;
-read the sidecar separately. `publish-hf.sh` uploads both files when present.
+only in `crossrefs/`. No crossref is used as a synonym or merge key in the main
+parquet. The `default` config is `biolinkamalgam.parquet` alone:
+
+----
+load_dataset("SkyeAv/biolink-amalgam", split="train")                          # cliques
+load_dataset("SkyeAv/biolink-amalgam", "crossrefs_dbsnp_reference", split="train")  # one edge type
+----
+
+`publish-hf.sh` uploads `crossrefs/*.parquet` and deletes a stale pre-split
+`crossrefs.parquet` from the repo.
 
 `make run ARGS="crossrefs --out <run> --top 200 --profile wenceslaus"` writes
 `crossref-report/summary.tsv` (edge and distinct-node counts by predicate, source

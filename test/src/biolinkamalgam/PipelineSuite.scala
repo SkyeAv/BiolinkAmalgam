@@ -74,7 +74,7 @@ object PipelineSuite extends TestSuite {
       assert(merges.length == 3) // header + 2 merges
     }
 
-    test("ClinVar + OBO: additive sources, typed crossref sidecar, core cache stays a hit") {
+    test("ClinVar + OBO: additive sources, per-predicate crossref files, core cache stays a hit") {
       val out = os.temp.dir(prefix = "biolinkamalgam-extra-test")
       val oboDir = out / "obo"
       os.makeDir.all(oboDir)
@@ -121,16 +121,34 @@ object PipelineSuite extends TestSuite {
       assert(back.filter("CURIE = 'TEST:0000001'").count() == 1)
       assert(back.filter("CURIE = 'TEST:0000002'").count() == 0) // obsolete
 
-      val edges = spark.read.parquet((out / "run2" / "crossrefs.parquet").toString)
-      assert(edges.schema.fieldNames.toSeq == Seq("subject", "predicate", "object", "source"))
-      val rows = edges.collect().map(r => (r.getString(0), r.getString(1), r.getString(2))).toSet
-      assert(rows.contains(("CLINVAR:15043", "dbsnp_reference", "DBSNP:rs268")))
-      assert(rows.contains(("CLINVAR:15044", "dbsnp_reference", "DBSNP:rs268")))
-      assert(rows.contains(("TEST:0000002", "replaced_by", "TEST:0000003")))
-      assert(rows.contains(("TEST:0000001", "xref", "MESH:D000001")))
-      assert(os.read(out / "run2" / "README.md").contains("crossrefs.parquet"))
-      // no extra sources => no sidecar
-      assert(!os.exists(out / "run1" / "crossrefs.parquet"))
+      // one parquet per predicate, so consumers pick which edge types to conflate
+      val xrefDir = out / "run2" / "crossrefs"
+      val files = os.list(xrefDir).map(_.last).filter(_.endsWith(".parquet")).toSet
+      assert(
+        files == Set("dbsnp_reference.parquet", "gene_association.parquet", "replaced_by.parquet", "xref.parquet")
+      )
+      assert(!os.exists(out / "run2" / "crossrefs.parquet"))
+      def edges(predicate: String) = {
+        val df = spark.read.parquet((xrefDir / s"$predicate.parquet").toString)
+        assert(df.schema.fieldNames.toSeq == Seq("subject", "predicate", "object", "source"))
+        val rows = df.collect().map(r => (r.getString(0), r.getString(1), r.getString(2))).toSet
+        assert(rows.forall(_._2 == predicate)) // no predicate mixing across files
+        rows
+      }
+      val dbsnp = edges("dbsnp_reference")
+      assert(dbsnp.contains(("CLINVAR:15043", "dbsnp_reference", "DBSNP:rs268")))
+      assert(dbsnp.contains(("CLINVAR:15044", "dbsnp_reference", "DBSNP:rs268")))
+      assert(edges("replaced_by").contains(("TEST:0000002", "replaced_by", "TEST:0000003")))
+      assert(edges("xref").contains(("TEST:0000001", "xref", "MESH:D000001")))
+      assert(edges("gene_association").nonEmpty)
+      val card = os.read(out / "run2" / "README.md")
+      Seq("dbsnp_reference", "gene_association", "replaced_by", "xref").foreach { p =>
+        assert(card.contains(s"config_name: crossrefs_$p"))
+        assert(card.contains(s"path: crossrefs/$p.parquet"))
+      }
+      // no extra sources => no crossref files and no crossref configs
+      assert(!os.exists(out / "run1" / "crossrefs"))
+      assert(!os.read(out / "run1" / "README.md").contains("crossrefs_"))
     }
 
     test("ingest cache: second run reuses materialized cliques with identical output") {

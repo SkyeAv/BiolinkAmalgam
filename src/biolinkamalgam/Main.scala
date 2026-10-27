@@ -415,7 +415,7 @@ object Main {
     try {
       val dir = os.Path(out, os.pwd)
       val edges = biolinkamalgam.transform.CrossrefAnalysis
-        .edges(spark.read.parquet((dir / "crossrefs.parquet").toString))
+        .edges(spark.read.parquet((dir / "crossrefs").toString)) // every per-predicate parquet
         .persist(org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK)
       val report = dir / "crossref-report"
       os.makeDir.all(report)

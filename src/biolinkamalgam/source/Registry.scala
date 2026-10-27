@@ -61,6 +61,17 @@ object Registry {
     frames.reduceOption(_ unionByName _)
   }
 
+  /** Distinct predicates present in `edges`, sorted; each becomes its own `crossrefs/<predicate>.parquet`. Predicates
+    * are file names and HF config names, so anything outside `[a-z][a-z0-9_]*` fails loudly.
+    */
+  def crossrefPredicates(edges: DataFrame): Seq[String] = {
+    val found = edges.select("predicate").distinct().collect().map(_.getString(0)).toSeq.sorted
+    found.foreach(p =>
+      require(p != null && p.matches("[a-z][a-z0-9_]*"), s"crossref predicate is not a safe identifier: $p")
+    )
+    found
+  }
+
   /** Union of all source outputs in canonical clique shape, consolidated by leader: BABEL's compendium and synonym rows
     * for the SAME clique (and any custom source re-defining the same CURIE) fold into one row — names/taxa unioned,
     * identifier count maxed, priority minned.

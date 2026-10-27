@@ -9,7 +9,7 @@ import org.apache.spark.sql.{DataFrame, SparkSession}
 class ClinVarSource(file: os.Path) extends SynonymSource("clinvar", priority = 10) {
   override def read(spark: SparkSession, path: os.Path): DataFrame = ClinVarSource.readSummary(spark, file)
 
-  /** Typed variant edges for the crossref sidecar. */
+  /** Typed variant edges for crossrefs/dbsnp_reference and crossrefs/gene_association. */
   def crossrefs(spark: SparkSession, sample: Option[Long] = None): DataFrame =
     ClinVarSource.crossrefs(sampledRead(spark, file, sample))
 

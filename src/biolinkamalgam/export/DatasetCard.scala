@@ -25,8 +25,20 @@ object DatasetCard {
       parquetFile: String,
       stages: Seq[Manifest.Stage],
       meta: Map[String, String],
-      generated: String
+      generated: String,
+      crossrefPredicates: Seq[String] = Seq.empty
   ): String = {
+    crossrefPredicates.foreach(p =>
+      require(p.matches("[a-z][a-z0-9_]*"), s"crossref predicate must be a lowercase identifier: $p")
+    )
+    val predicates = crossrefPredicates.distinct.sorted
+    val crossrefConfigs = predicates
+      .map(p => s"""|  - config_name: crossrefs_$p
+                    |    data_files:
+                    |      - split: train
+                    |        path: crossrefs/$p.parquet
+                    |""".stripMargin)
+      .mkString
     val rows = stages.find(_.name == "arbitrate").map(_.rows).getOrElse(0L)
     val stageLines = stages
       .map(s => f"| ${s.name}%-10s | ${s.rows}%12d | ${s.millis}%8d ms |")
@@ -50,7 +62,7 @@ object DatasetCard {
        else
          """|ClinVar `variant_summary` contributes `biolink:SequenceVariant` cliques: one `CLINVAR:` row per
             |variation and one `DBSNP:rs...` row per referenced rsID. An rsID can denote several alleles, so the
-            |two are never merged; their links live in `crossrefs.parquet`.
+            |two are never merged; their links live in the `crossrefs_dbsnp_reference` config.
             |
             |""".stripMargin) +
         (if (obo == "none") ""
@@ -60,17 +72,37 @@ object DatasetCard {
               |terms with their names, EXACT synonyms and alt_ids; BROAD/NARROW/RELATED synonyms are excluded.
               |
               |""".stripMargin)
+    val predicateMeaning = Map(
+      "dbsnp_reference" -> "ClinVar variation -> dbSNP rsID (one rsID can cover several alleles)",
+      "gene_association" -> "ClinVar variation -> NCBIGene it sits in (location, not identity)",
+      "xref" -> "OBO term cross-reference (relevance only per OBO 1.4)",
+      "replaced_by" -> "obsolete OBO term -> its successor"
+    )
     val crossrefSection =
-      if (clinvar == "none" && obo == "none") ""
-      else
-        """|
-           |## crossrefs.parquet
-           |
-           |Typed associations, NOT equivalences: `subject, predicate, object, source` with predicates
-           |`dbsnp_reference` (ClinVar variation -> rsID), `gene_association` (ClinVar variation -> NCBIGene),
-           |`xref` (OBO term cross-reference; relevance only per OBO 1.4) and `replaced_by` (obsolete OBO term ->
-           |successor).
-           |""".stripMargin
+      if (predicates.isEmpty) ""
+      else {
+        val lines = predicates
+          .map(p => s"| `crossrefs_$p` | `crossrefs/$p.parquet` | ${predicateMeaning.getOrElse(p, "typed edge")} |")
+          .mkString("\n")
+        val loads = predicates
+          .map(p => s"""$p = load_dataset("SkyeAv/biolink-amalgam", "crossrefs_$p", split="train")""")
+          .mkString("\n")
+        s"""|
+            |## Crossrefs (opt-in conflation)
+            |
+            |Typed edges kept OUT of the main table, one config (train split) per predicate, so you choose which
+            |edge types to conflate. Columns: `subject, predicate, object, source`. Edges carry source CURIEs, not
+            |post-merge leaders; an obsolete term may appear only here.
+            |
+            || config | file | edge |
+            ||---|---|---|
+            |$lines
+            |
+            |```python
+            |$loads
+            |```
+            |""".stripMargin
+      }
     val extraLicense =
       (if (clinvar == "none") "" else "\nClinVar and dbSNP are NCBI public-domain data.") +
         (if (obo == "none") ""
@@ -85,7 +117,7 @@ object DatasetCard {
        |    data_files:
        |      - split: train
        |        path: biolinkamalgam.parquet
-       |license: other
+       |${crossrefConfigs}license: other
        |license_name: babel-upstream-licenses
        |task_categories:
        |  - other
@@ -165,9 +197,10 @@ object DatasetCard {
       outDir: os.Path,
       parquetFile: String,
       stages: Seq[Manifest.Stage],
-      meta: Map[String, String]
+      meta: Map[String, String],
+      crossrefPredicates: Seq[String] = Seq.empty
   ): Unit = {
     val generated = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString
-    os.write.over(outDir / "README.md", render(parquetFile, stages, meta, generated))
+    os.write.over(outDir / "README.md", render(parquetFile, stages, meta, generated, crossrefPredicates))
   }
 }

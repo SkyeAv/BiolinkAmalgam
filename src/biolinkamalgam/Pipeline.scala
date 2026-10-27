@@ -169,21 +169,28 @@ object Pipeline {
               pool.submit[Unit](() => Tsv.writeSingleFile(merges, opts.outDir / "merges.tsv"))
             )
           else Seq.empty
-        // Typed crossref sidecar (subject, predicate, object, source): xref / replaced_by / dbsnp_reference /
-        // gene_association. Separate file because these are associations, not synonyms or equivalence.
-        val crossrefFut = Registry.crossrefs(spark, extraSources, opts.sample).map { edges =>
-          pool.submit[Unit](() =>
-            Parquet.writeSingleFile(
-              edges.orderBy("subject", "predicate", "object"),
-              opts.outDir / "crossrefs.parquet",
-              opts.simpleExport
+        // Typed crossref edges, one parquet per predicate under crossrefs/ (one HF config each), so consumers
+        // choose which edge types to conflate. Never merged here: they are associations, not equivalence.
+        val crossrefDir = opts.outDir / "crossrefs"
+        os.remove.all(crossrefDir)
+        os.remove(opts.outDir / "crossrefs.parquet", checkExists = false) // pre-split layout
+        val edges = Registry
+          .crossrefs(spark, extraSources, opts.sample)
+          .map(_.persist(org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK))
+        val predicates = edges.toSeq.flatMap(Registry.crossrefPredicates)
+        val crossrefFuts =
+          for (e <- edges.toSeq; p <- predicates)
+            yield pool.submit[Unit](() =>
+              Parquet.writeSingleFile(
+                e.filter(org.apache.spark.sql.functions.col("predicate") === p).orderBy("subject", "object", "source"),
+                crossrefDir / s"$p.parquet",
+                opts.simpleExport
+              )
             )
-          )
-        }
         parquetFut.get()
         auditFuts.foreach(_.get())
-        crossrefFut.foreach(_.get())
-        if (crossrefFut.isEmpty) os.remove(opts.outDir / "crossrefs.parquet", checkExists = false)
+        crossrefFuts.foreach(_.get())
+        edges.foreach(_.unpersist(blocking = false))
         val sourceMeta = opts.datasetMeta ++ Map(
           "clinvar" -> opts.clinvarFile.map(_.toString).getOrElse("none"),
           "obo" -> opts.oboDir.map(_.toString).getOrElse("none"),
@@ -192,7 +199,7 @@ object Pipeline {
                                 else s"${inference.fingerprint.hashCode.toLong.toHexString}"),
           "taxon_allowlist" -> taxa.allowlist.size.toString
         )
-        DatasetCard.write(opts.outDir, "biolinkamalgam.parquet", stages.toSeq, sourceMeta)
+        DatasetCard.write(opts.outDir, "biolinkamalgam.parquet", stages.toSeq, sourceMeta, predicates)
         () -> output.count()
       } finally {
         pool.shutdown()
