@@ -202,3 +202,27 @@ synonym counts. No flags are applied automatically.
 * Winner order (merge and arbitration): preferred-name match, most synonyms, identifier count, source priority
   (lower wins; manual/custom 0, BABEL 10), smallest CURIE. Total order — reruns reproduce.
 * Tests are offline by construction: `FixtureSnapshotProvider` throws on non-local paths.
+
+== Full dbSNP and biomedical Wikidata bulk work
+
+The Ralph bulk-source implementation is in progress. The current published/run
+coverage remains unchanged until full-source ingestion and validation finish.
+
+`config/dbsnp_bulk.yaml` pins all 30 RefSNP partitions in NCBI human dbSNP b157:
+25 chromosome partitions plus `other`, `nosnppos`, `unsupported`, `merged` and
+`withdrawn`. The sample rs268 file is excluded because it duplicates real data.
+The inventory totals 485,701,336,617 compressed bytes. A GRCh38 VCF alone is not
+this scope. Historical nonhuman dbSNP/EVA releases are not part of the human pin.
+
+`config/wikidata_bulk.yaml` pins the official 2026-10-19 complete entity JSON
+bzip2 dump (103,488,697,311 bytes). Biomedical inclusion rules will be explicit
+and versioned; this pin is the input scan, not an assertion that every item is
+medical. Wikidata structured data are CC0; Wikipedia article text is not imported.
+
+The inventory implementation validates HTTPS release pins, exact sizes and MD5
+checksums. Projection receipts require committed parquet parts and match the
+entire manifest fingerprint and a required projection fingerprint (code version
+and scope config). A receipt permits releasing a processed source
+shard while retaining resumability. Receipts track projected file names/sizes,
+not cryptographic hashes of projected data; they do not replace final dataset
+validation. No large bulk download is started by tests.

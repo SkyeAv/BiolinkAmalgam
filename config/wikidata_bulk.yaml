@@ -1,0 +1,11 @@
+# Official full Wikidata item JSON dump, dated pin (not mutable latest).
+# Source: dated directory and wikidata-20261019-md5sums.txt, verified 2026-10-28.
+# Clinical/biomedical selection is defined separately; this file pins the entire input scan.
+release: wikidata-20261019
+scope: Every item in the official dated entity JSON dump; biomedical inclusion is configured separately
+files:
+  - name: wikidata-20261019-all.json.bz2
+    url: https://dumps.wikimedia.org/wikidatawiki/entities/20261019/wikidata-20261019-all.json.bz2
+    bytes: 103488697311
+    md5: cfec3f8ab5fd8f6f0b70f58c590a02da
+    role: entities

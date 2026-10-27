@@ -1,0 +1,157 @@
+# NCBI dbSNP b157 human RefSNP inventory; no VCF-only scope shortcut.
+# Sources: archive/b157/JSON/CHECKSUMS and HTTP Content-Length, verified 2026-10-28.
+# Excludes refsnp-sample (rs268 duplicate), frequency_studies and NG_00000 annotations (not RefSNP inventory).
+# Process one checked compressed shard at a time; ~485.7GB total transfer, max41.1GB shard.
+release: dbsnp-b157-human
+scope: All current human RefSNP primary and exceptional JSON partitions, including merged and withdrawn history
+files:
+  - name: refsnp-chr1.json.bz2
+    url: https://ftp.ncbi.nlm.nih.gov/snp/archive/b157/JSON/refsnp-chr1.json.bz2
+    bytes: 40811988713
+    md5: cbddf8bbb56e1a8ee106c320fce7468b
+    role: active
+  - name: refsnp-chr10.json.bz2
+    url: https://ftp.ncbi.nlm.nih.gov/snp/archive/b157/JSON/refsnp-chr10.json.bz2
+    bytes: 23467563632
+    md5: 6d996161d665e139d0c72041ae825ce7
+    role: active
+  - name: refsnp-chr11.json.bz2
+    url: https://ftp.ncbi.nlm.nih.gov/snp/archive/b157/JSON/refsnp-chr11.json.bz2
+    bytes: 23662360512
+    md5: 7b0a239ba9b4fdd767394ebe588fa3c7
+    role: active
+  - name: refsnp-chr12.json.bz2
+    url: https://ftp.ncbi.nlm.nih.gov/snp/archive/b157/JSON/refsnp-chr12.json.bz2
+    bytes: 22788449378
+    md5: c4df00eddfa7a575d6db7a9be77f6d65
+    role: active
+  - name: refsnp-chr13.json.bz2
+    url: https://ftp.ncbi.nlm.nih.gov/snp/archive/b157/JSON/refsnp-chr13.json.bz2
+    bytes: 14201574055
+    md5: 5c08e87ede2c077ae3e7dc694cbf9ce8
+    role: active
+  - name: refsnp-chr14.json.bz2
+    url: https://ftp.ncbi.nlm.nih.gov/snp/archive/b157/JSON/refsnp-chr14.json.bz2
+    bytes: 15095757183
+    md5: 88535b7fab8f9df00a8f14fb8e41ff67
+    role: active
+  - name: refsnp-chr15.json.bz2
+    url: https://ftp.ncbi.nlm.nih.gov/snp/archive/b157/JSON/refsnp-chr15.json.bz2
+    bytes: 14983270662
+    md5: 5bf9c2c5f4721916840eed29879da7ed
+    role: active
+  - name: refsnp-chr16.json.bz2
+    url: https://ftp.ncbi.nlm.nih.gov/snp/archive/b157/JSON/refsnp-chr16.json.bz2
+    bytes: 15688098027
+    md5: c900de2d83d61f29349f95096ecc9414
+    role: active
+  - name: refsnp-chr17.json.bz2
+    url: https://ftp.ncbi.nlm.nih.gov/snp/archive/b157/JSON/refsnp-chr17.json.bz2
+    bytes: 15544299973
+    md5: 5b4f644d2841b2c23747eb5bf56f1f0b
+    role: active
+  - name: refsnp-chr18.json.bz2
+    url: https://ftp.ncbi.nlm.nih.gov/snp/archive/b157/JSON/refsnp-chr18.json.bz2
+    bytes: 12125649175
+    md5: 449650b40bd350960d92608494c450bc
+    role: active
+  - name: refsnp-chr19.json.bz2
+    url: https://ftp.ncbi.nlm.nih.gov/snp/archive/b157/JSON/refsnp-chr19.json.bz2
+    bytes: 12068352700
+    md5: d36a8f986b1bb3421afa385aba20ea08
+    role: active
+  - name: refsnp-chr2.json.bz2
+    url: https://ftp.ncbi.nlm.nih.gov/snp/archive/b157/JSON/refsnp-chr2.json.bz2
+    bytes: 41101576772
+    md5: 0ec7a9c832450819984ebbd43ca5fcd1
+    role: active
+  - name: refsnp-chr20.json.bz2
+    url: https://ftp.ncbi.nlm.nih.gov/snp/archive/b157/JSON/refsnp-chr20.json.bz2
+    bytes: 9621486324
+    md5: 51eb854a4910600fca05007daf8c2151
+    role: active
+  - name: refsnp-chr21.json.bz2
+    url: https://ftp.ncbi.nlm.nih.gov/snp/archive/b157/JSON/refsnp-chr21.json.bz2
+    bytes: 5543122904
+    md5: 3c3255dcad802aa0dd131f255f0d906c
+    role: active
+  - name: refsnp-chr22.json.bz2
+    url: https://ftp.ncbi.nlm.nih.gov/snp/archive/b157/JSON/refsnp-chr22.json.bz2
+    bytes: 6686858433
+    md5: b479c9e73b796641b2cd3e63837d6041
+    role: active
+  - name: refsnp-chr3.json.bz2
+    url: https://ftp.ncbi.nlm.nih.gov/snp/archive/b157/JSON/refsnp-chr3.json.bz2
+    bytes: 34704559332
+    md5: dbf879c425df6109480e4833ee36089e
+    role: active
+  - name: refsnp-chr4.json.bz2
+    url: https://ftp.ncbi.nlm.nih.gov/snp/archive/b157/JSON/refsnp-chr4.json.bz2
+    bytes: 30259211878
+    md5: 2096a2fab47a899d633eb35d4b11c8e5
+    role: active
+  - name: refsnp-chr5.json.bz2
+    url: https://ftp.ncbi.nlm.nih.gov/snp/archive/b157/JSON/refsnp-chr5.json.bz2
+    bytes: 28064787152
+    md5: f7082da928d66bf24c3694a48213add4
+    role: active
+  - name: refsnp-chr6.json.bz2
+    url: https://ftp.ncbi.nlm.nih.gov/snp/archive/b157/JSON/refsnp-chr6.json.bz2
+    bytes: 28430014999
+    md5: 2b656149c86f27edd02ec231fbbf0cb4
+    role: active
+  - name: refsnp-chr7.json.bz2
+    url: https://ftp.ncbi.nlm.nih.gov/snp/archive/b157/JSON/refsnp-chr7.json.bz2
+    bytes: 27189808090
+    md5: e3185931e6159b31bdf3f50f55973ff3
+    role: active
+  - name: refsnp-chr8.json.bz2
+    url: https://ftp.ncbi.nlm.nih.gov/snp/archive/b157/JSON/refsnp-chr8.json.bz2
+    bytes: 24461471025
+    md5: 2ce6dd8b7b4c844d90ec917eb2743fed
+    role: active
+  - name: refsnp-chr9.json.bz2
+    url: https://ftp.ncbi.nlm.nih.gov/snp/archive/b157/JSON/refsnp-chr9.json.bz2
+    bytes: 21702133698
+    md5: 981dcd9b31538d6f5af5701bd5c60dfe
+    role: active
+  - name: refsnp-chrMT.json.bz2
+    url: https://ftp.ncbi.nlm.nih.gov/snp/archive/b157/JSON/refsnp-chrMT.json.bz2
+    bytes: 2274808
+    md5: b61f347e8ba099a65cd10945725afda2
+    role: active
+  - name: refsnp-chrX.json.bz2
+    url: https://ftp.ncbi.nlm.nih.gov/snp/archive/b157/JSON/refsnp-chrX.json.bz2
+    bytes: 15555950731
+    md5: c117a3b743dffb02ceb800cfdef9f62b
+    role: active
+  - name: refsnp-chrY.json.bz2
+    url: https://ftp.ncbi.nlm.nih.gov/snp/archive/b157/JSON/refsnp-chrY.json.bz2
+    bytes: 877826158
+    md5: 2543d126a85a659797406f835d7589b1
+    role: active
+  - name: refsnp-merged.json.bz2
+    url: https://ftp.ncbi.nlm.nih.gov/snp/archive/b157/JSON/refsnp-merged.json.bz2
+    bytes: 813797312
+    md5: 5d9c56c9b8c3412eb0195a63f12e1ebf
+    role: merged
+  - name: refsnp-nosnppos.json.bz2
+    url: https://ftp.ncbi.nlm.nih.gov/snp/archive/b157/JSON/refsnp-nosnppos.json.bz2
+    bytes: 12014
+    md5: 67cc320b044cc1d04bebf649ac617b35
+    role: nosnppos
+  - name: refsnp-other.json.bz2
+    url: https://ftp.ncbi.nlm.nih.gov/snp/archive/b157/JSON/refsnp-other.json.bz2
+    bytes: 58620654
+    md5: ab068f450125ec937e5be529c76cb148
+    role: active
+  - name: refsnp-unsupported.json.bz2
+    url: https://ftp.ncbi.nlm.nih.gov/snp/archive/b157/JSON/refsnp-unsupported.json.bz2
+    bytes: 116747317
+    md5: 6ba5f3c2c3c6aa250b0264cab28a556c
+    role: unsupported
+  - name: refsnp-withdrawn.json.bz2
+    url: https://ftp.ncbi.nlm.nih.gov/snp/archive/b157/JSON/refsnp-withdrawn.json.bz2
+    bytes: 73713006
+    md5: 7a220dc508cb8b2cb53d461604975ed3
+    role: withdrawn
