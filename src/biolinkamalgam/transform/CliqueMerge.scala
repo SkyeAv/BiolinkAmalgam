@@ -1,7 +1,6 @@
 package biolinkamalgam.transform
 
 import biolinkamalgam.config.Config
-import biolinkamalgam.schema.Schemas
 import org.apache.spark.sql.DataFrame
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
@@ -10,7 +9,8 @@ import org.apache.spark.sql.functions._
   *
   * Rules:
   *   - Preferred-name matching is strip-only (NameKey.stripKey) — never stemmed.
-  *   - Empty preferred names never merge.
+  *   - Empty preferred names and SequenceVariant cliques never merge.
+  *   - Groups with disjoint identifiers under a shared namespace stay separate (label equality is not identity).
   *   - Taxa are bucketed through the configured major-taxa list: major taxa keep their own scope, long-tail taxa share
   *     "other-taxa", no-taxon cliques share "no-taxon".
   *   - Winner = most synonyms (name count), then identifier count, then source priority (lower wins), then smallest
@@ -25,6 +25,25 @@ import org.apache.spark.sql.functions._
 object CliqueMerge {
 
   case class Result(cliques: DataFrame, merges: DataFrame)
+
+  /** True when both identifier lists use some prefix but share no identifier under it. */
+  def namespaceConflict(a: Seq[String], b: Seq[String]): Boolean = groupNamespaceConflict(Seq(a, b))
+
+  /** Each namespace needs one identifier shared by every member using it, not merely a bridge through the winner. */
+  def groupNamespaceConflict(members: Seq[Seq[String]]): Boolean = {
+    val common = scala.collection.mutable.Map.empty[String, Set[String]]
+    members.exists { ids =>
+      Option(ids)
+        .getOrElse(Seq.empty)
+        .filter(i => i != null && i.contains(':'))
+        .groupBy(_.takeWhile(_ != ':'))
+        .exists { case (prefix, values) =>
+          val intersection = common.get(prefix).fold(values.toSet)(_.intersect(values.toSet))
+          common.update(prefix, intersection)
+          intersection.isEmpty
+        }
+    }
+  }
 
   def apply(cliques: DataFrame, majorTaxa: Set[String]): Result = {
     val scopeUdf = udf { taxa: Seq[String] =>
@@ -46,25 +65,38 @@ object CliqueMerge {
     // One row per (clique, scope); cliques with empty preferred names stay out of merging.
     val scoped = keyed
       .filter(length(col("pref_key")) > 0 && col("category") =!= "biolink:SequenceVariant")
+      .select("leader", "pref_key", "category", "taxa", "identifiers", "identifier_count", "priority", "name_count")
       .withColumn("taxon_scope", explode(scopeUdf(col("taxa"))))
 
+    // Find contested KEYS before ranking; do not sort 140M singleton rows or shuffle synonym payloads.
+    val groupSizes = scoped.groupBy(groupKeys.map(col): _*).count().filter(col("count") > 1)
     val win = Window.partitionBy(groupKeys.map(col): _*).orderBy(rank: _*)
-    val ranked = scoped.withColumn("rn", row_number().over(win))
+    val contested = scoped.join(groupSizes.drop("count"), groupKeys).withColumn("rn", row_number().over(win))
 
-    // Only groups with more than one member can merge.
-    val groupSizes = ranked.groupBy(groupKeys.map(col): _*).count().filter(col("count") > 1)
-    val contested = ranked.join(groupSizes.drop("count"), groupKeys)
+    // Namespace veto: two cliques that both carry identifiers in some prefix but share none there are distinct
+    // entities BABEL kept apart (two PUBCHEM.COMPOUND CIDs, two species' NCBIGene tRNA genes in __OTHER_TAXA__).
+    // A preferred name shared by such cliques is ambiguous, so the whole group stays unmerged; merging a third
+    // clique into an arbitrary one of them would be a guess. Cost: one small array check per contested pair.
+    val conflictUdf = udf((a: Seq[String], b: Seq[String]) => CliqueMerge.namespaceConflict(a, b))
+    val groupConflict = udf((members: Seq[Seq[String]]) => CliqueMerge.groupNamespaceConflict(members))
+    val ambiguous = contested
+      .groupBy(groupKeys.map(col): _*)
+      .agg(collect_list(col("identifiers")).as("member_identifiers"))
+      .filter(groupConflict(col("member_identifiers")))
+      .select(groupKeys.map(col): _*)
+    val mergeable = contested.join(ambiguous, groupKeys, "left_anti")
 
-    val loserLeaders = contested.filter(col("rn") > 1).select(col("leader")).distinct()
+    val loserLeaders = mergeable.filter(col("rn") > 1).select(col("leader")).distinct()
 
     // Winners: group-max cliques that are not themselves losers anywhere.
-    val winners = contested
+    val winners = mergeable
       .filter(col("rn") === 1)
       .join(loserLeaders, Seq("leader"), "left_anti")
 
     // Pair each loser with the winners in its scope groups; keep the best-ranked winner.
-    val loserCols = contested
+    val loserCols = mergeable
       .filter(col("rn") > 1)
+      .join(keyed.select("leader", "names"), Seq("leader"))
       .select(
         col("leader").as("loser_leader"),
         col("pref_key"),
@@ -75,18 +107,21 @@ object CliqueMerge {
         col("identifiers").as("loser_identifiers"),
         col("identifier_count").as("loser_ids")
       )
-    val pairs = loserCols.join(
-      winners.select(
-        col("leader").as("winner_leader"),
-        col("pref_key"),
-        col("category"),
-        col("taxon_scope"),
-        col("name_count").as("winner_name_count"),
-        col("identifier_count").as("winner_id_count"),
-        col("priority").as("winner_priority")
-      ),
-      groupKeys
-    )
+    val pairs = loserCols
+      .join(
+        winners.select(
+          col("leader").as("winner_leader"),
+          col("pref_key"),
+          col("category"),
+          col("taxon_scope"),
+          col("name_count").as("winner_name_count"),
+          col("identifier_count").as("winner_id_count"),
+          col("priority").as("winner_priority"),
+          col("identifiers").as("winner_identifiers")
+        ),
+        groupKeys
+      )
+      .filter(!conflictUdf(col("loser_identifiers"), col("winner_identifiers"))) // multi-scope cliques
     val bestWin = Window
       .partitionBy(col("loser_leader"))
       .orderBy(

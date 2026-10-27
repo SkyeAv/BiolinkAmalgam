@@ -38,8 +38,9 @@ object CliqueMergeSuite extends TestSuite {
       assert(
         pairs == Set(
           ("NCBIGene:9001", "HGNC:9002"), // " examplein" strips to "examplein"
-          ("NCBIGene:9001", "CUSTOM:2"), // custom source's duplicate clique folds in too
-          ("NCBIGene:9004", "NCBIGene:9005") // long-tail taxa share the other-taxa bucket
+          ("NCBIGene:9001", "CUSTOM:2") // custom source's duplicate clique folds in too
+          // NCBIGene:9004/9005 share "rarein" and the other-taxa bucket but are two NCBIGene ids:
+          // the namespace veto keeps two species' genes apart.
         )
       )
     }
@@ -54,12 +55,32 @@ object CliqueMergeSuite extends TestSuite {
           Set("NCBIGene:9001", "ENSEMBL:ENSG00000999999", "HGNC:9002", "CUSTOM:2")
       )
 
-      val rarein = result.cliques.filter("leader = 'NCBIGene:9004'").head()
-      assert(names(rarein).toSet == Set("rarein", "rarein alpha"))
-      assert(
-        rarein.getAs[Seq[String]]("taxa").toSet ==
-          Set("NCBITaxon:1111111", "NCBITaxon:2222222")
-      )
+    }
+
+    test("namespace veto: same name, same prefix, disjoint identifiers never merge") {
+      assert(result.cliques.filter("leader = 'NCBIGene:9004'").count() == 1)
+      assert(result.cliques.filter("leader = 'NCBIGene:9005'").count() == 1)
+      assert(CliqueMerge.namespaceConflict(Seq("PUBCHEM.COMPOUND:1", "CAS:1"), Seq("PUBCHEM.COMPOUND:2")))
+      assert(!CliqueMerge.namespaceConflict(Seq("NCBIGene:1", "HGNC:2"), Seq("HGNC:2", "UMLS:C1")))
+      assert(!CliqueMerge.namespaceConflict(Seq("NCBIGene:1"), Seq("HGNC:2"))) // disjoint prefixes merge
+      assert(!CliqueMerge.namespaceConflict(null, Seq("HGNC:2")))
+      assert(CliqueMerge.groupNamespaceConflict(Seq(Seq("X:1", "X:2"), Seq("X:1"), Seq("X:2"))))
+      assert(!CliqueMerge.groupNamespaceConflict(Seq(Seq("X:1", "X:2"), Seq("X:1"), Seq("X:1", "Y:2"))))
+      // a third clique cannot pick a side in an ambiguous group: nothing in the group merges
+      import spark.implicits._
+      val df = Seq(
+        ("PUBCHEM.COMPOUND:1", "Cobalt;erbium", Seq("PUBCHEM.COMPOUND:1", "x"), Seq("PUBCHEM.COMPOUND:1")),
+        ("PUBCHEM.COMPOUND:2", "Cobalt;erbium", Seq("y"), Seq("PUBCHEM.COMPOUND:2")),
+        ("MESH:C1", "Cobalt;erbium", Seq("z"), Seq("MESH:C1"))
+      ).toDF("leader", "preferred_name", "names", "identifiers")
+        .withColumn("category", org.apache.spark.sql.functions.lit("biolink:MolecularMixture"))
+        .withColumn("taxa", org.apache.spark.sql.functions.typedLit(Seq.empty[String]))
+        .withColumn("identifier_count", org.apache.spark.sql.functions.size($"identifiers"))
+        .withColumn("source", org.apache.spark.sql.functions.lit("babel"))
+        .withColumn("priority", org.apache.spark.sql.functions.lit(10))
+      val r = CliqueMerge(df, Set.empty)
+      assert(r.cliques.count() == 3)
+      assert(r.merges.count() == 0)
     }
 
     test("different taxon scope does not merge") {
@@ -81,7 +102,7 @@ object CliqueMergeSuite extends TestSuite {
 
     test("empty preferred names never merge and survive") {
       assert(result.cliques.filter("leader = 'UMLS:C9999999'").count() == 1)
-      assert(result.cliques.count() == 16) // 19 fixture cliques - 3 merged away
+      assert(result.cliques.count() == 17) // 19 fixture cliques - 2 merged away (9004/9005 vetoed)
     }
   }
 }

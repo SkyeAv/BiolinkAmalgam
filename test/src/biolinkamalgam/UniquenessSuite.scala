@@ -52,7 +52,9 @@ object UniquenessSuite extends TestSuite {
           // PUBCHEM's "glucose" strip-collides with CHEBI's "Glucose"; CHEBI wins (preferred-name match)
           ("glucose", "biolink:SmallMolecule", Config.NoTaxon, "PUBCHEM.COMPOUND:5793", "CHEBI:17234"),
           // "shared alias" tie broken by smallest leader CURIE
-          ("shared alias", "biolink:Gene", "NCBITaxon:9606", "NCBIGene:9007", "NCBIGene:9006")
+          ("shared alias", "biolink:Gene", "NCBITaxon:9606", "NCBIGene:9007", "NCBIGene:9006"),
+          // disjoint NCBIGene ids never merge; "rarein" is arbitrated in the shared long-tail bucket
+          ("rarein", "biolink:Gene", Config.OtherTaxa, "NCBIGene:9005", "NCBIGene:9004")
         )
       )
     }
@@ -84,8 +86,8 @@ object UniquenessSuite extends TestSuite {
 
     test("a clique whose only name lost still gets a row, with empty SYNONYMS") {
       val rows = result.output.collect().map(r => r.getAs[String]("CURIE") -> r).toMap
-      // 19 fixture cliques - 3 merged away (this suite bypasses ingest filters)
-      assert(rows.keySet.size == 16)
+      // 19 fixture cliques - 2 merged away (same-prefix 9004/9005 are vetoed)
+      assert(rows.keySet.size == 17)
       assert(synonyms(rows, "PUBCHEM.COMPOUND:5793") == List.empty)
     }
 
