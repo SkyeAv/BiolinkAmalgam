@@ -93,7 +93,10 @@ object Schemas {
       StructField("CURIE", StringType, nullable = false),
       StructField("PREFERRED_NAME", StringType, nullable = true),
       StructField("CLASS", StringType, nullable = false),
-      StructField("SYNONYMS", ArrayType(StringType, containsNull = false), nullable = false)
+      StructField("SYNONYMS", ArrayType(StringType, containsNull = false), nullable = false),
+      // Valid NCBITaxon CURIEs of the clique (BABEL taxa, or inferred from single-species identifier
+      // namespaces), sorted; empty = taxonless. Every non-OrganismTaxon row with taxa meets the allowlist.
+      StructField("TAXA", ArrayType(StringType, containsNull = false), nullable = false)
     )
   )
 }

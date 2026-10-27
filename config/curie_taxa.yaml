@@ -1,0 +1,243 @@
+# Identifier-namespace taxon inference (TaxonInference). Applied AFTER the ingest cache, so
+# edits here never invalidate it; the taxa.yaml allowlist is re-applied afterwards.
+#
+# Why: BABEL leaves 269M cliques taxonless, and the fullmap-parity allowlist keeps every
+# taxonless clique. Without inference, ~6.6M ENSEMBL gene/protein cliques from species
+# outside the top-100 cutoff (958k pig ENSSSC alone) and MGI/RGD/ZFIN genes bypass it.
+# Rule: a clique with NO valid taxa gets the union of the taxa its identifiers map to.
+# Cliques that already carry taxa are never changed. Only namespaces that are
+# single-species BY CONSTRUCTION appear here; multi-species spaces (UMLS, MESH, PR,
+# UniProtKB, NCIT) stay taxonless even when BABEL evidence is mostly human.
+
+# Whole CURIE prefix -> taxon. Evidence: BABEL 2026jul22 cliques with exactly one taxon.
+prefix_taxa:
+  MGI: NCBITaxon:10090       # Mouse Genome Informatics; 58,200/58,200 single-taxon cliques
+  HGNC: NCBITaxon:9606       # HUGO human gene nomenclature; 44,236/44,236
+  WormBase: NCBITaxon:6239   # C. elegans; 46,890/46,890
+  FB: NCBITaxon:7227         # FlyBase D. melanogaster genes; 17,872/17,872
+  SGD: NCBITaxon:559292      # Saccharomyces Genome Database (S288C); 6,471/6,471
+  RGD: NCBITaxon:10116       # rat; BABEL reads the Alliance RGD file (rat only, src/datahandlers/mods.py)
+  ZFIN: NCBITaxon:7955       # zebrafish; BABEL reads the Alliance ZFIN file (src/datahandlers/mods.py)
+
+# Ensembl stable-id species prefix -> taxon. The prefix is the text between "ENS" and the
+# feature letter (G/T/P/E/R/FM/GT + 11 digits); human uses the bare "ENS" prefix.
+# Source per entry: BABEL 2026jul22 single-taxon evidence (always purity 1.0) when present,
+# else Ensembl REST /lookup/id on one sample id (release 116) joined to /info/species.
+# Disagreement: ENSGAC REST says 481459, BABEL evidence 69293 (allowlisted); BABEL wins
+# because the allowlist is defined over BABEL taxa.
+ensembl_species_prefixes:
+  "ENS": NCBITaxon:9606  # homo_sapiens; babel-2026jul22-evidence ALLOWLISTED
+  "ENSAAG": NCBITaxon:91739  # species via BABEL evidence; babel-2026jul22-evidence ALLOWLISTED
+  "ENSABR": NCBITaxon:132585  # anser_brachyrhynchus; ensembl-rest-116
+  "ENSACA": NCBITaxon:28377  # anolis_carolinensis; ensembl-rest-116
+  "ENSACC": NCBITaxon:223781  # aquila_chrysaetos_chrysaetos; ensembl-rest-116
+  "ENSACI": NCBITaxon:61819  # amphilophus_citrinellus; ensembl-rest-116
+  "ENSACL": NCBITaxon:8154  # astatotilapia_calliptera; ensembl-rest-116
+  "ENSAME": NCBITaxon:9646  # ailuropoda_melanoleuca; ensembl-rest-116
+  "ENSAMX": NCBITaxon:7994  # astyanax_mexicanus; ensembl-rest-116
+  "ENSANA": NCBITaxon:37293  # aotus_nancymaae; ensembl-rest-116
+  "ENSAOC": NCBITaxon:80972  # amphiprion_ocellaris; ensembl-rest-116
+  "ENSAPE": NCBITaxon:161767  # amphiprion_percula; ensembl-rest-116
+  "ENSAPL": NCBITaxon:8840  # anas_platyrhynchos_platyrhynchos; ensembl-rest-116
+  "ENSAPO": NCBITaxon:80966  # acanthochromis_polyacanthus; ensembl-rest-116
+  "ENSATE": NCBITaxon:64144  # anabas_testudineus; ensembl-rest-116
+  "ENSAYY": NCBITaxon:8260  # species via BABEL evidence; babel-2026jul22-evidence ALLOWLISTED
+  "ENSBBB": NCBITaxon:43346  # bison_bison_bison; ensembl-rest-116
+  "ENSBGR": NCBITaxon:30521  # bos_grunniens; ensembl-rest-116
+  "ENSBIX": NCBITaxon:30522  # bos_indicus_hybrid; ensembl-rest-116
+  "ENSBMS": NCBITaxon:9771  # balaenoptera_musculus; ensembl-rest-116
+  "ENSBMU": NCBITaxon:72004  # bos_mutus; ensembl-rest-116
+  "ENSBSL": NCBITaxon:158456  # betta_splendens; ensembl-rest-116
+  "ENSBTA": NCBITaxon:9913  # bos_taurus; babel-2026jul22-evidence ALLOWLISTED
+  "ENSCAB": NCBITaxon:106734  # chelonoidis_abingdonii; ensembl-rest-116
+  "ENSCAF": NCBITaxon:286419  # canis_lupus_dingo; ensembl-rest-116
+  "ENSCAR": NCBITaxon:7957  # carassius_auratus; ensembl-rest-116
+  "ENSCAT": NCBITaxon:9531  # cercocebus_atys; ensembl-rest-116
+  "ENSCCA": NCBITaxon:2715852  # cebus_imitator; ensembl-rest-116
+  "ENSCCR": NCBITaxon:630221  # cyprinus_carpio_carpio; ensembl-rest-116
+  "ENSCDR": NCBITaxon:9838  # camelus_dromedarius; ensembl-rest-116
+  "ENSCEU": NCBITaxon:72248  # species via BABEL evidence; babel-2026jul22-evidence ALLOWLISTED
+  "ENSCGO": NCBITaxon:56716  # cottoperca_gobio; ensembl-rest-116
+  "ENSCGR": NCBITaxon:10029  # cricetulus_griseus_picr; ensembl-rest-116
+  "ENSCHA": NCBITaxon:7950  # clupea_harengus; ensembl-rest-116
+  "ENSCHI": NCBITaxon:9925  # capra_hircus; ensembl-rest-116
+  "ENSCHO": NCBITaxon:9358  # choloepus_hoffmanni; ensembl-rest-116
+  "ENSCHY": NCBITaxon:84702  # cervus_hanglu_yarkandensis; ensembl-rest-116
+  "ENSCIN": NCBITaxon:7719  # ciona_intestinalis; ensembl-rest-116
+  "ENSCJA": NCBITaxon:9483  # callithrix_jacchus; ensembl-rest-116
+  "ENSCJP": NCBITaxon:93934  # coturnix_japonica; ensembl-rest-116
+  "ENSCLA": NCBITaxon:34839  # chinchilla_lanigera; ensembl-rest-116
+  "ENSCLM": NCBITaxon:8103  # cyclopterus_lumpus; ensembl-rest-116
+  "ENSCMI": NCBITaxon:7868  # callorhinchus_milii; ensembl-rest-116
+  "ENSCPB": NCBITaxon:8478  # chrysemys_picta_bellii; ensembl-rest-116
+  "ENSCPO": NCBITaxon:10141  # cavia_porcellus; ensembl-rest-116
+  "ENSCPR": NCBITaxon:8502  # crocodylus_porosus; ensembl-rest-116
+  "ENSCSA": NCBITaxon:60711  # chlorocebus_sabaeus; ensembl-rest-116
+  "ENSCSAV": NCBITaxon:51511  # ciona_savignyi; ensembl-rest-116
+  "ENSCSE": NCBITaxon:244447  # cynoglossus_semilaevis; ensembl-rest-116
+  "ENSCVA": NCBITaxon:28743  # cyprinodon_variegatus; ensembl-rest-116
+  "ENSCWA": NCBITaxon:51154  # catagonus_wagneri; ensembl-rest-116
+  "ENSDAR": NCBITaxon:7955  # danio_rerio; ensembl-rest-116
+  "ENSDCD": NCBITaxon:299321  # denticeps_clupeoides; ensembl-rest-116
+  "ENSDLA": NCBITaxon:13489  # dicentrarchus_labrax; ensembl-rest-116
+  "ENSDLE": NCBITaxon:9749  # delphinapterus_leucas; ensembl-rest-116
+  "ENSDNO": NCBITaxon:9361  # dasypus_novemcinctus; ensembl-rest-116
+  "ENSDOR": NCBITaxon:10020  # dipodomys_ordii; ensembl-rest-116
+  "ENSDPX": NCBITaxon:13037  # species via BABEL evidence; babel-2026jul22-evidence ALLOWLISTED
+  "ENSEAS": NCBITaxon:9793  # equus_asinus; ensembl-rest-116
+  "ENSEBU": NCBITaxon:7764  # eptatretus_burgeri; ensembl-rest-116
+  "ENSECA": NCBITaxon:9796  # equus_caballus; ensembl-rest-116
+  "ENSECR": NCBITaxon:27687  # erpetoichthys_calabaricus; ensembl-rest-116
+  "ENSEEE": NCBITaxon:8005  # electrophorus_electricus; ensembl-rest-116
+  "ENSEEU": NCBITaxon:9365  # erinaceus_europaeus; ensembl-rest-116
+  "ENSELU": NCBITaxon:8010  # esox_lucius; ensembl-rest-116
+  "ENSETE": NCBITaxon:9371  # echinops_telfairi; ensembl-rest-116
+  "ENSFAL": NCBITaxon:59894  # ficedula_albicollis; ensembl-rest-116
+  "ENSFCA": NCBITaxon:9685  # felis_catus_abyssinian; ensembl-rest-116
+  "ENSFCT": NCBITaxon:9685  # felis_catus; ensembl-rest-116
+  "ENSFHE": NCBITaxon:8078  # fundulus_heteroclitus; babel-2026jul22-evidence ALLOWLISTED
+  "ENSGAC": NCBITaxon:69293  # gasterosteus_aculeatus; babel-2026jul22-evidence ALLOWLISTED
+  "ENSGAL": NCBITaxon:9031  # gallus_gallus; ensembl-rest-116
+  "ENSGEV": NCBITaxon:1825980  # gopherus_evgoodei; ensembl-rest-116
+  "ENSGFO": NCBITaxon:48883  # geospiza_fortis; ensembl-rest-116
+  "ENSGGO": NCBITaxon:9595  # gorilla_gorilla; ensembl-rest-116
+  "ENSGMO": NCBITaxon:8049  # gadus_morhua; ensembl-rest-116
+  "ENSHBU": NCBITaxon:8153  # haplochromis_burtoni; ensembl-rest-116
+  "ENSHCO": NCBITaxon:109280  # hippocampus_comes; ensembl-rest-116
+  "ENSHGL": NCBITaxon:10181  # heterocephalus_glaber_female; ensembl-rest-116
+  "ENSHHU": NCBITaxon:62062  # hucho_hucho; ensembl-rest-116
+  "ENSHZE": NCBITaxon:7113  # species via BABEL evidence; babel-2026jul22-evidence ALLOWLISTED
+  "ENSIIO": NCBITaxon:171585  # species via BABEL evidence; babel-2026jul22-evidence ALLOWLISTED
+  "ENSINY": NCBITaxon:110368  # species via BABEL evidence; babel-2026jul22-evidence ALLOWLISTED
+  "ENSIPU": NCBITaxon:7998  # ictalurus_punctatus; ensembl-rest-116
+  "ENSJJA": NCBITaxon:51337  # jaculus_jaculus; ensembl-rest-116
+  "ENSKMA": NCBITaxon:37003  # kryptolebias_marmoratus; ensembl-rest-116
+  "ENSLAC": NCBITaxon:7897  # latimeria_chalumnae; ensembl-rest-116
+  "ENSLAF": NCBITaxon:9785  # loxodonta_africana; ensembl-rest-116
+  "ENSLBE": NCBITaxon:56723  # labrus_bergylta; ensembl-rest-116
+  "ENSLCA": NCBITaxon:8187  # lates_calcarifer; ensembl-rest-116
+  "ENSLCR": NCBITaxon:215358  # larimichthys_crocea; ensembl-rest-116
+  "ENSLLE": NCBITaxon:445787  # leptobrachium_leishanense; ensembl-rest-116
+  "ENSLLT": NCBITaxon:8630  # laticauda_laticaudata; ensembl-rest-116
+  "ENSLNA": NCBITaxon:680683  # species via BABEL evidence; babel-2026jul22-evidence ALLOWLISTED
+  "ENSLOC": NCBITaxon:7918  # lepisosteus_oculatus; ensembl-rest-116
+  "ENSLSN": NCBITaxon:189913  # species via BABEL evidence; babel-2026jul22-evidence ALLOWLISTED
+  "ENSMAM": NCBITaxon:205130  # mastacembelus_armatus; ensembl-rest-116
+  "ENSMAU": NCBITaxon:10036  # mesocricetus_auratus; ensembl-rest-116
+  "ENSMCX": NCBITaxon:113334  # species via BABEL evidence; babel-2026jul22-evidence ALLOWLISTED
+  "ENSMEU": NCBITaxon:9315  # notamacropus_eugenii; ensembl-rest-116
+  "ENSMFA": NCBITaxon:9541  # macaca_fascicularis; ensembl-rest-116
+  "ENSMGA": NCBITaxon:9103  # meleagris_gallopavo; ensembl-rest-116
+  "ENSMIC": NCBITaxon:30608  # microcebus_murinus; ensembl-rest-116
+  "ENSMJU": NCBITaxon:191418  # species via BABEL evidence; babel-2026jul22-evidence ALLOWLISTED
+  "ENSMLE": NCBITaxon:9568  # mandrillus_leucophaeus; ensembl-rest-116
+  "ENSMLU": NCBITaxon:59463  # myotis_lucifugus; ensembl-rest-116
+  "ENSMMD": NCBITaxon:586833  # myripristis_murdjan; ensembl-rest-116
+  "ENSMMM": NCBITaxon:9994  # marmota_marmota_marmota; ensembl-rest-116
+  "ENSMMN": NCBITaxon:40151  # monodon_monoceros; ensembl-rest-116
+  "ENSMMS": NCBITaxon:68415  # moschus_moschiferus; ensembl-rest-116
+  "ENSMMU": NCBITaxon:9544  # macaca_mulatta; ensembl-rest-116
+  "ENSMNE": NCBITaxon:9545  # macaca_nemestrina; ensembl-rest-116
+  "ENSMOC": NCBITaxon:79684  # microtus_ochrogaster; ensembl-rest-116
+  "ENSMOD": NCBITaxon:13616  # monodelphis_domestica; ensembl-rest-116
+  "ENSMPU": NCBITaxon:9669  # mustela_putorius_furo; ensembl-rest-116
+  "ENSMSI": NCBITaxon:10103  # mus_spicilegus; ensembl-rest-116
+  "ENSMSP": NCBITaxon:10096  # mus_spretus; ensembl-rest-116
+  "ENSMSPG": NCBITaxon:10096  # mus_spretus; ensembl-rest-116
+  "ENSMSX": NCBITaxon:7130  # species via BABEL evidence; babel-2026jul22-evidence ALLOWLISTED
+  "ENSMUS": NCBITaxon:10090  # mus_musculus; babel-2026jul22-evidence ALLOWLISTED
+  "ENSMZE": NCBITaxon:106582  # maylandia_zebra; ensembl-rest-116
+  "ENSNBR": NCBITaxon:32507  # neolamprologus_brichardi; ensembl-rest-116
+  "ENSNFU": NCBITaxon:105023  # nothobranchius_furzeri; ensembl-rest-116
+  "ENSNGA": NCBITaxon:1026970  # nannospalax_galili; ensembl-rest-116
+  "ENSNLE": NCBITaxon:61853  # nomascus_leucogenys; ensembl-rest-116
+  "ENSNNA": NCBITaxon:35670  # naja_naja; ensembl-rest-116
+  "ENSNSU": NCBITaxon:8663  # notechis_scutatus; ensembl-rest-116
+  "ENSNVI": NCBITaxon:452646  # neovison_vison; babel-2026jul22-evidence ALLOWLISTED
+  "ENSOAN": NCBITaxon:9258  # ornithorhynchus_anatinus; ensembl-rest-116
+  "ENSOAR": NCBITaxon:9940  # ovis_aries; ensembl-rest-116
+  "ENSOCU": NCBITaxon:9986  # oryctolagus_cuniculus; ensembl-rest-116
+  "ENSODE": NCBITaxon:10160  # octodon_degus; ensembl-rest-116
+  "ENSOGA": NCBITaxon:30611  # otolemur_garnettii; ensembl-rest-116
+  "ENSOJA": NCBITaxon:123683  # oryzias_javanicus; ensembl-rest-116
+  "ENSOKI": NCBITaxon:8019  # oncorhynchus_kisutch; ensembl-rest-116
+  "ENSOME": NCBITaxon:30732  # oryzias_melastigma; ensembl-rest-116
+  "ENSOMY": NCBITaxon:8022  # oncorhynchus_mykiss; babel-2026jul22-evidence ALLOWLISTED
+  "ENSONI": NCBITaxon:8128  # oreochromis_niloticus; ensembl-rest-116
+  "ENSOPR": NCBITaxon:9978  # ochotona_princeps; ensembl-rest-116
+  "ENSORL": NCBITaxon:8090  # oryzias_latipes; ensembl-rest-116
+  "ENSOSI": NCBITaxon:183150  # oryzias_sinensis; ensembl-rest-116
+  "ENSOTS": NCBITaxon:74940  # oncorhynchus_tshawytscha; ensembl-rest-116
+  "ENSPAG": NCBITaxon:116150  # species via BABEL evidence; babel-2026jul22-evidence ALLOWLISTED
+  "ENSPAN": NCBITaxon:9555  # papio_anubis; ensembl-rest-116
+  "ENSPCA": NCBITaxon:9813  # procavia_capensis; ensembl-rest-116
+  "ENSPCI": NCBITaxon:38626  # phascolarctos_cinereus; ensembl-rest-116
+  "ENSPCO": NCBITaxon:379532  # propithecus_coquereli; ensembl-rest-116
+  "ENSPCT": NCBITaxon:9755  # physeter_catodon; ensembl-rest-116
+  "ENSPEM": NCBITaxon:230844  # peromyscus_maniculatus_bairdii; ensembl-rest-116
+  "ENSPFO": NCBITaxon:48698  # poecilia_formosa; ensembl-rest-116
+  "ENSPKI": NCBITaxon:1676925  # paramormyrops_kingsleyae; ensembl-rest-116
+  "ENSPLA": NCBITaxon:48699  # poecilia_latipinna; ensembl-rest-116
+  "ENSPLO": NCBITaxon:9689  # panthera_leo; ensembl-rest-116
+  "ENSPMA": NCBITaxon:7757  # petromyzon_marinus; ensembl-rest-116
+  "ENSPMJ": NCBITaxon:9157  # parus_major; ensembl-rest-116
+  "ENSPMR": NCBITaxon:64176  # podarcis_muralis; ensembl-rest-116
+  "ENSPNA": NCBITaxon:42514  # pygocentrus_nattereri; ensembl-rest-116
+  "ENSPNH": NCBITaxon:76193  # species via BABEL evidence; babel-2026jul22-evidence ALLOWLISTED
+  "ENSPNY": NCBITaxon:303518  # pundamilia_nyererei; ensembl-rest-116
+  "ENSPPA": NCBITaxon:9597  # pan_paniscus; ensembl-rest-116
+  "ENSPPR": NCBITaxon:9691  # panthera_pardus; ensembl-rest-116
+  "ENSPPY": NCBITaxon:9601  # pongo_abelii; ensembl-rest-116
+  "ENSPRE": NCBITaxon:8081  # poecilia_reticulata; ensembl-rest-116
+  "ENSPSI": NCBITaxon:13735  # pelodiscus_sinensis; ensembl-rest-116
+  "ENSPSM": NCBITaxon:1328070  # prolemur_simus; ensembl-rest-116
+  "ENSPSN": NCBITaxon:42100  # phocoena_sinus; ensembl-rest-116
+  "ENSPTI": NCBITaxon:74533  # panthera_tigris_altaica; ensembl-rest-116
+  "ENSPTR": NCBITaxon:9598  # pan_troglodytes; ensembl-rest-116
+  "ENSPTX": NCBITaxon:8673  # pseudonaja_textilis; ensembl-rest-116
+  "ENSPVA": NCBITaxon:132908  # pteropus_vampyrus; ensembl-rest-116
+  "ENSRBI": NCBITaxon:61621  # rhinopithecus_bieti; ensembl-rest-116
+  "ENSRFE": NCBITaxon:59479  # rhinolophus_ferrumequinum; ensembl-rest-116
+  "ENSRNO": NCBITaxon:10116  # rattus_norvegicus; ensembl-rest-116
+  "ENSRRO": NCBITaxon:61622  # rhinopithecus_roxellana; ensembl-rest-116
+  "ENSSAR": NCBITaxon:42254  # sorex_araneus; ensembl-rest-116
+  "ENSSAU": NCBITaxon:8175  # sparus_aurata; ensembl-rest-116
+  "ENSSBO": NCBITaxon:39432  # saimiri_boliviensis_boliviensis; ensembl-rest-116
+  "ENSSCA": NCBITaxon:9135  # serinus_canaria; ensembl-rest-116
+  "ENSSCU": NCBITaxon:441894  # struthio_camelus_australis; ensembl-rest-116
+  "ENSSDU": NCBITaxon:41447  # seriola_dumerili; ensembl-rest-116
+  "ENSSFO": NCBITaxon:113540  # scleropages_formosus; ensembl-rest-116
+  "ENSSHA": NCBITaxon:9305  # sarcophilus_harrisii; ensembl-rest-116
+  "ENSSHB": NCBITaxon:2489341  # strigops_habroptila; ensembl-rest-116
+  "ENSSLD": NCBITaxon:1841481  # seriola_lalandi_dorsalis; ensembl-rest-116
+  "ENSSLU": NCBITaxon:283035  # sander_lucioperca; ensembl-rest-116
+  "ENSSMA": NCBITaxon:52904  # scophthalmus_maximus; ensembl-rest-116
+  "ENSSMR": NCBITaxon:96440  # salvator_merianae; ensembl-rest-116
+  "ENSSPA": NCBITaxon:144197  # stegastes_partitus; ensembl-rest-116
+  "ENSSPU": NCBITaxon:8508  # sphenodon_punctatus; ensembl-rest-116
+  "ENSSSA": NCBITaxon:8030  # salmo_salar; babel-2026jul22-evidence ALLOWLISTED
+  "ENSSSC": NCBITaxon:9823  # sus_scrofa; ensembl-rest-116
+  "ENSSTO": NCBITaxon:43179  # ictidomys_tridecemlineatus; ensembl-rest-116
+  "ENSSTU": NCBITaxon:8032  # salmo_trutta; ensembl-rest-116
+  "ENSSVL": NCBITaxon:55149  # sciurus_vulgaris; ensembl-rest-116
+  "ENSTBE": NCBITaxon:37347  # tupaia_belangeri; ensembl-rest-116
+  "ENSTGU": NCBITaxon:59729  # taeniopygia_guttata; ensembl-rest-116
+  "ENSTMT": NCBITaxon:2587831  # terrapene_carolina_triunguis; ensembl-rest-116
+  "ENSTNI": NCBITaxon:99883  # tetraodon_nigroviridis; ensembl-rest-116
+  "ENSTRU": NCBITaxon:31033  # takifugu_rubripes; ensembl-rest-116
+  "ENSTSY": NCBITaxon:1868482  # carlito_syrichta; ensembl-rest-116
+  "ENSTTR": NCBITaxon:9739  # tursiops_truncatus; ensembl-rest-116
+  "ENSUAM": NCBITaxon:9643  # ursus_americanus; ensembl-rest-116
+  "ENSUMA": NCBITaxon:29073  # ursus_maritimus; ensembl-rest-116
+  "ENSUPA": NCBITaxon:9999  # urocitellus_parryii; ensembl-rest-116
+  "ENSVAT": NCBITaxon:42275  # species via BABEL evidence; babel-2026jul22-evidence ALLOWLISTED
+  "ENSVCA": NCBITaxon:171605  # species via BABEL evidence; babel-2026jul22-evidence ALLOWLISTED
+  "ENSVPA": NCBITaxon:30538  # vicugna_pacos; ensembl-rest-116
+  "ENSVTA": NCBITaxon:334116  # species via BABEL evidence; babel-2026jul22-evidence ALLOWLISTED
+  "ENSVUR": NCBITaxon:29139  # vombatus_ursinus; ensembl-rest-116
+  "ENSVVU": NCBITaxon:9627  # vulpes_vulpes; ensembl-rest-116
+  "ENSXCO": NCBITaxon:32473  # xiphophorus_couchianus; ensembl-rest-116
+  "ENSXET": NCBITaxon:8364  # xenopus_tropicalis; ensembl-rest-116
+  "ENSXMA": NCBITaxon:8083  # xiphophorus_maculatus; ensembl-rest-116
+  "ENSZCE": NCBITaxon:33412  # species via BABEL evidence; babel-2026jul22-evidence ALLOWLISTED
+  "ENSZIM": NCBITaxon:129554  # species via BABEL evidence; babel-2026jul22-evidence ALLOWLISTED

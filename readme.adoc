@@ -28,7 +28,17 @@ dataset; snapshot `2026jul22`, 138,885,412 cliques). Publish a fresh run with `m
 |`PREFERRED_NAME` |string |the clique's preferred name, as written
 |`CLASS` |string |Biolink category, e.g. `biolink:Gene`
 |`SYNONYMS` |array<string> |synonyms as originally written, sorted
+|`TAXA` |array<string> |the clique's NCBITaxon CURIEs, sorted; empty when taxonless
 |===
+
+Taxa and the top-taxa cutoff: `config/taxa.yaml` `taxon_allowlist` holds the same top-100 experimental taxa as
+Tablassert's fullmap. A non-`biolink:OrganismTaxon` clique that carries taxa ships only if at least one is in the
+list. Taxonless cliques ship (fullmap parity), but first `config/curie_taxa.yaml` gives taxonless cliques the
+taxon of single-species identifier namespaces (MGI, RGD, ZFIN, FB, WormBase, SGD, HGNC and the Ensembl stable-id
+species prefixes in `config/curie_taxa.yaml`), so e.g. pig `ENSSSC` genes no longer bypass the cutoff. Inferred
+taxa also move such cliques out of the taxonless merge/arbitration scope into their species scope, so e.g.
+human Ensembl-only genes arbitrate against BABEL-tagged human cliques (the namespace veto still guards merges).
+`validate` checks the cutoff on the shipped parquet.
 
 Beside it: `run_manifest.json` (stage metrics) and `README.md` — a generated Hugging Face dataset card with
 frontmatter, schema docs, filter summary, and run stats. Pass `--audit` to also emit `conflicts.tsv`

@@ -39,7 +39,11 @@ object PipelineSuite extends TestSuite {
       assert(os.exists(parquet))
       val back = spark.read.parquet(parquet.toString)
       assert(back.count() == 13)
-      assert(back.schema.fieldNames.toSeq == Seq("CURIE", "PREFERRED_NAME", "CLASS", "SYNONYMS"))
+      assert(back.schema.fieldNames.toSeq == Seq("CURIE", "PREFERRED_NAME", "CLASS", "SYNONYMS", "TAXA"))
+      assert(
+        back.filter("CURIE = 'NCBIGene:2538'").head().getAs[scala.collection.Seq[String]]("TAXA").toList ==
+          List("NCBITaxon:9606")
+      )
       // dropped categories never reach the deliverable
       assert(back.filter("CLASS = 'biolink:Publication'").count() == 0)
       assert(back.filter("CLASS = 'biolink:Agent'").count() == 0)
@@ -163,6 +167,52 @@ object PipelineSuite extends TestSuite {
       )
       val altRows = spark.read.parquet((out / "alt-out" / "biolinkamalgam.parquet").toString).count()
       assert(altRows == 12) // the mouse-only NCBIGene:9003 clique now fails the allowlist
+    }
+
+    test("taxon inference: inferred taxa land in TAXA and out-of-cutoff species are dropped, cache untouched") {
+      val out = os.temp.dir(prefix = "biolinkamalgam-taxa-test")
+      val custom = out / "custom"
+      os.makeDir.all(custom)
+      os.copy(TestSupport.resource("/taxon-inference/inference.tsv"), custom / "inference.tsv")
+      def opts(dest: os.Path, inference: Boolean) = Pipeline.Options(
+        babelDir = Some(TestSupport.miniSnapshot),
+        customDir = Some(custom),
+        outDir = dest,
+        taxaConfig = TestSupport.taxaConfig,
+        promoteConfig = TestSupport.promoteConfig,
+        filtersConfig = TestSupport.filtersConfig,
+        ingestCache = Some(out / "cache"),
+        curieTaxaConfig = if (inference) Some(TestSupport.resource("/config/curie_taxa.yaml")) else None
+      )
+      Pipeline.run(spark, opts(out / "plain", inference = false))
+      val fp = os.read(out / "cache" / "_fingerprint")
+      Pipeline.run(spark, opts(out / "inferred", inference = true))
+      assert(os.read(out / "cache" / "_fingerprint") == fp) // inference sits after the cache
+
+      def taxa(run: String) = spark.read
+        .parquet((out / run / "biolinkamalgam.parquet").toString)
+        .collect()
+        .map(r => r.getAs[String]("CURIE") -> r.getAs[scala.collection.Seq[String]]("TAXA").toList)
+        .toMap
+      val plain = taxa("plain")
+      val inferred = taxa("inferred")
+      // without inference the pig and rat cliques slip past the cutoff as taxonless rows
+      assert(plain("ENSEMBL:ENSSSCG00000000002") == List.empty)
+      assert(plain("RGD:2323195") == List.empty)
+      // with inference: pig (9823) and rat (10116) are outside the test allowlist {9606, 10090} -> dropped
+      assert(!inferred.contains("ENSEMBL:ENSSSCG00000000002"))
+      assert(!inferred.contains("RGD:2323195"))
+      assert(inferred("ENSEMBL:ENSG00000000003") == List("NCBITaxon:9606"))
+      assert(inferred("MGI:7942167") == List("NCBITaxon:10090"))
+      // unmappable identifiers stay taxonless and are kept, as the fullmap allowlist rule requires
+      assert(inferred("ENSEMBL:2L52.1a.1") == List.empty)
+      assert(inferred("UMLS:C0000001") == List.empty)
+      // BABEL-tagged rows are unchanged
+      assert(inferred("NCBIGene:2538") == List("NCBITaxon:9606"))
+      assert(plain.size - inferred.size == 2)
+      val allow = TestSupport.taxonAllowlist
+      assert(inferred.values.forall(t => t.isEmpty || t.exists(allow.contains)))
+      os.remove.all(out)
     }
   }
 }

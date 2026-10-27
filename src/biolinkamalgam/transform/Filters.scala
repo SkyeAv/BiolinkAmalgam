@@ -55,14 +55,17 @@ object Filters {
         .withColumn("identifier_count", size(col("identifiers")))
     }
 
-    if (taxonAllowlist.nonEmpty) {
+    taxonAllowlisted(df, taxonAllowlist)
+  }
+
+  /** The allowlist rule alone. Idempotent, so it is safe to re-apply after TaxonInference fills taxa. */
+  def taxonAllowlisted(cliques: DataFrame, taxonAllowlist: Set[String]): DataFrame =
+    if (taxonAllowlist.isEmpty) cliques
+    else {
       val allow = taxonAllowlist
       val retain = udf { (category: String, taxa: Seq[String]) =>
         retainForTaxonAllowlist(category, Option(taxa).getOrElse(Seq.empty), allow)
       }
-      df = df.filter(retain(col("category"), col("taxa")))
+      cliques.filter(retain(col("category"), col("taxa")))
     }
-
-    df
-  }
 }

@@ -45,7 +45,7 @@ Tablassert's fullmap. One NLP pipeline, one language — never two.
 One file, `biolinkamalgam.parquet`, schema exactly:
 
 ```
-CURIE: string, PREFERRED_NAME: string, CLASS: string, SYNONYMS: array<string>
+CURIE: string, PREFERRED_NAME: string, CLASS: string, SYNONYMS: array<string>, TAXA: array<string>
 ```
 
 One row per surviving clique leader. A clique whose names all lost arbitration (or failed
@@ -64,7 +64,18 @@ opt-in via `--audit` — at BABEL scale they are hundreds of GB and unwritable i
 - **Taxon allowlist** (`taxa.yaml` `taxon_allowlist`, Tablassert fullmap
   `retain_for_taxon_allowlist` parity): when non-empty, cliques whose valid taxa
   (positive NCBITaxon ids) are all outside the list are dropped at ingest; taxonless and
-  biolink:OrganismTaxon cliques are always kept.
+  biolink:OrganismTaxon cliques are always kept. `validate` fails if any shipped
+  non-OrganismTaxon row with TAXA has no allowlisted taxon.
+- **Taxon inference** (`config/curie_taxa.yaml`, `TaxonInference`): BABEL leaves most
+  Ensembl-only and MOD-only gene/protein cliques taxonless, which would let them bypass the
+  allowlist. Cliques with NO valid taxon take the union of taxa of their single-species
+  identifiers (MGI, RGD, ZFIN, FB, WormBase, SGD, HGNC; Ensembl stable-id species prefixes,
+  bare `ENS` = human), then the allowlist is re-applied. Existing taxa never change;
+  multi-species namespaces (UMLS, MESH, PR, UniProtKB, NCIT) are never mapped. Runs after
+  the ingest cache, so edits never invalidate it. Inferred taxa also move a clique out of
+  `__NO_TAXON__` into its (major or long-tail) taxon scope for merge/arbitration.
+  `--no-taxon-inference` disables it.
+- **TAXA column** ships each row's valid NCBITaxon CURIEs, sorted; empty = taxonless.
 - **No stemming.** Merge and arbitration keys are strip-only (trim, lowercase, drop
   non-word chars, collapse whitespace). Inflections ("glucose"/"glucoses") stay distinct.
   Output SYNONYMS always keep ORIGINAL strings.

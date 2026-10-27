@@ -1,0 +1,7 @@
+curie	label	synonyms	category	taxa
+ENSEMBL:ENSSSCG00000000002	pigonly		biolink:Gene	
+ENSEMBL:ENSG00000000003	TSPAN6		biolink:Gene	
+RGD:2323195	Ighl6		biolink:Gene	
+MGI:7942167	Rr480035		biolink:Gene	
+ENSEMBL:2L52.1a.1	wormish		biolink:Gene	
+UMLS:C0000001	taxonless concept		biolink:Disease	

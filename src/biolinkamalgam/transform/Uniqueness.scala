@@ -82,14 +82,21 @@ object Uniqueness {
 
     // Cliques whose names ALL lost arbitration (or failed the gates) still get
     // a row with empty SYNONYMS — one row per surviving clique, not per kept name.
+    // TAXA: the clique's valid NCBITaxon CURIEs, sorted (empty = taxonless). Malformed values and the
+    // NCBITaxon:0 sentinel are dropped, matching what the allowlist treats as a taxon.
     val output = cliques
-      .select(col("leader"), col("preferred_name"), col("category"))
+      .select(col("leader"), col("preferred_name"), col("category"), col("taxa"))
       .join(surviving, Seq("leader"), "left")
       .select(
         col("leader").as("CURIE"),
         col("preferred_name").as("PREFERRED_NAME"),
         col("category").as("CLASS"),
-        coalesce(col("SYNONYMS"), array().cast("array<string>")).as("SYNONYMS")
+        coalesce(col("SYNONYMS"), array().cast("array<string>")).as("SYNONYMS"),
+        sort_array(
+          array_distinct(
+            filter(coalesce(col("taxa"), array().cast("array<string>")), t => t.rlike("^NCBITaxon:[1-9][0-9]*$"))
+          )
+        ).as("TAXA")
       )
 
     Result(output, conflicts)

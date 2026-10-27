@@ -17,7 +17,8 @@ object ExportSuite extends TestSuite {
         concat(lit("CURIE:"), col("id")).as("CURIE"),
         lit("some name").as("PREFERRED_NAME"),
         lit("biolink:Gene").as("CLASS"),
-        array(lit("syn1"), lit("syn2")).as("SYNONYMS")
+        array(lit("syn1"), lit("syn2")).as("SYNONYMS"),
+        array(lit("NCBITaxon:9606")).as("TAXA")
       )
       .repartition(4)
 
@@ -32,7 +33,7 @@ object ExportSuite extends TestSuite {
       assert(!os.exists(dir / "biolinkamalgam.parts"))
       val back = spark.read.parquet(dest.toString)
       assert(back.count() == 100)
-      assert(back.schema.fieldNames.toSeq == Seq("CURIE", "PREFERRED_NAME", "CLASS", "SYNONYMS"))
+      assert(back.schema.fieldNames.toSeq == Seq("CURIE", "PREFERRED_NAME", "CLASS", "SYNONYMS", "TAXA"))
       assert(back.select("CURIE").distinct().count() == 100)
       assert(back.head().getAs[scala.collection.Seq[String]]("SYNONYMS").toSeq == Seq("syn1", "syn2"))
     }
@@ -75,6 +76,7 @@ object ExportSuite extends TestSuite {
       assert(card.contains("size_categories:\n  - n<1K"))
       assert(card.contains("test-snapshot"))
       assert(card.contains("`SYNONYMS` | list<string>"))
+      assert(card.contains("`TAXA` | list<string>"))
       assert(card.contains("Generated 2026-01-01"))
       assert(!card.contains("null"))
 

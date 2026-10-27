@@ -1,0 +1,8 @@
+# Test copy of config/curie_taxa.yaml (same loader), deliberately small.
+prefix_taxa:
+  MGI: NCBITaxon:10090
+  RGD: NCBITaxon:10116
+ensembl_species_prefixes:
+  "ENS": NCBITaxon:9606
+  "ENSSSC": NCBITaxon:9823
+  "ENSMUS": NCBITaxon:10090

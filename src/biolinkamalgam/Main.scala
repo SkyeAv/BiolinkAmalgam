@@ -51,6 +51,8 @@ object Main {
       clinvar: Option[String] = None,
       obo: Option[String] = None,
       oboConfig: String = "config/obo_sources.yaml",
+      curieTaxaConfig: String = "config/curie_taxa.yaml",
+      noTaxonInference: mainargs.Flag = mainargs.Flag(false),
       audit: mainargs.Flag = mainargs.Flag(false),
       simpleExport: mainargs.Flag = mainargs.Flag(false)
   ): Unit = {
@@ -82,6 +84,7 @@ object Main {
           clinvarFile = clinvar.map(f => os.Path(f, os.pwd)),
           oboDir = obo.map(d => os.Path(d, os.pwd)),
           oboConfig = Some(os.Path(oboConfig, os.pwd)),
+          curieTaxaConfig = if (noTaxonInference.value) None else Some(os.Path(curieTaxaConfig, os.pwd)),
           outDir = os.Path(out, os.pwd),
           taxaConfig = os.Path(taxaConfig, os.pwd),
           promoteConfig = os.Path(promoteConfig, os.pwd),
@@ -187,12 +190,13 @@ object Main {
   /** Pre-publication sanity checks on a finished run: schema, class drops, the uniqueness invariant, and the gates. */
   @main def validate(
       out: String,
+      taxaConfig: String = "config/taxa.yaml",
       master: Option[String] = None,
       profile: Option[String] = None
   ): Unit = {
     val (resolvedMaster, conf) = sparkSettings(profile, master)
     val spark = SparkSupport.session("biolinkamalgam-validate", resolvedMaster.orElse(Some("local[*]")), conf)
-    import org.apache.spark.sql.functions.{col, desc, explode, lower}
+    import org.apache.spark.sql.functions.{col, desc, explode, lower, size}
     var failed = false
     def check(label: String, ok: Boolean, detail: String = ""): Unit = {
       println(s"${if (ok) "ok  " else "FAIL"}  $label%-48s $detail")
@@ -203,8 +207,8 @@ object Main {
       val df = spark.read.parquet((dir / "biolinkamalgam.parquet").toString)
 
       check(
-        "schema == CURIE,PREFERRED_NAME,CLASS,SYNONYMS",
-        df.schema.fieldNames.mkString(",") == "CURIE,PREFERRED_NAME,CLASS,SYNONYMS",
+        "schema == CURIE,PREFERRED_NAME,CLASS,SYNONYMS,TAXA",
+        df.schema.fieldNames.mkString(",") == "CURIE,PREFERRED_NAME,CLASS,SYNONYMS,TAXA",
         df.schema.fieldNames.mkString(",")
       )
       val rows = df.count()
@@ -212,8 +216,8 @@ object Main {
       check("CURIEs unique", rows - df.select("CURIE").distinct().count() == 0)
 
       val exploded = df.select(col("CLASS"), explode(col("SYNONYMS")).as("s"))
-      // The guarantee is scoped by (class, taxon bucket); taxa are not shipped, so a
-      // name shared by same-class cliques in DIFFERENT taxon scopes is legal here.
+      // The guarantee is scoped by (class, taxon bucket) and TAXA ships the raw taxa, not the
+      // bucket, so a name shared by same-class cliques in DIFFERENT taxon scopes is legal here.
       // Report instead of fail; a runaway number would signal an arbitration bug.
       val crossCurie = exploded.groupBy("CLASS", "s").count().filter(col("count") > 1)
       val crossCurieCount = crossCurie.count()
@@ -228,6 +232,26 @@ object Main {
         crossCurieCount <= 5000000,
         s"shared-by-$crossCurieCount names; worst: $crossSample"
       )
+      // The top-taxa cutoff (taxa.yaml taxon_allowlist, fullmap parity): any non-OrganismTaxon row that carries
+      // taxa must carry at least one allowlisted taxon. Taxonless rows are legal; their count is reported.
+      val allowlist = Config.loadTaxa(os.Path(taxaConfig, os.pwd)).allowlist
+      if (allowlist.nonEmpty) {
+        val outsideCount = Validate.taxonCutoffOutside(df, allowlist)
+        val outsideSample = Validate
+          .taxonCutoffOutsideRows(df, allowlist)
+          .limit(3)
+          .collect()
+          .map(r => r.getAs[String]("CURIE"))
+          .mkString(", ")
+        check(
+          s"taxa within top-${allowlist.size} cutoff",
+          outsideCount == 0,
+          s"$outsideCount outside; e.g. $outsideSample"
+        )
+      }
+      val withTaxa = df.filter(size(col("TAXA")) > 0).count()
+      check("TAXA present [informational]", true, s"$withTaxa of $rows rows carry taxa")
+      check("TAXA values are NCBITaxon CURIEs", Validate.taxaShapeViolations(df) == 0)
       check(
         "Publication/Agent absent",
         df.filter(col("CLASS").isin("biolink:Publication", "biolink:Agent")).count() == 0
@@ -257,6 +281,34 @@ object Main {
       }
       println("VALIDATION PASSED")
     } finally spark.stop()
+  }
+
+  /** Pre-publication taxa checks, extracted so they are unit-testable without a Spark CLI run. */
+  object Validate {
+    import org.apache.spark.sql.functions.{array_intersect, col, explode, size, typedLit}
+
+    /** Rows whose taxa are all outside the allowlist (the fullmap-parity cutoff). An empty allowlist disables the check
+      * (same convention as Filters.taxonAllowlisted).
+      */
+    def taxonCutoffOutsideRows(
+        df: org.apache.spark.sql.DataFrame,
+        allowlist: Set[String]
+    ): org.apache.spark.sql.DataFrame =
+      if (allowlist.isEmpty) df.limit(0)
+      else
+        df.filter(
+          col("CLASS") =!= "biolink:OrganismTaxon" && size(col("TAXA")) > 0 &&
+            size(array_intersect(col("TAXA"), typedLit(allowlist.toSeq.sorted))) === 0
+        )
+
+    def taxonCutoffOutside(df: org.apache.spark.sql.DataFrame, allowlist: Set[String]): Long =
+      taxonCutoffOutsideRows(df, allowlist).count()
+
+    /** Null or non-NCBITaxon-CURIE elements anywhere in TAXA. */
+    def taxaShapeViolations(df: org.apache.spark.sql.DataFrame): Long =
+      df.select(explode(col("TAXA")).as("t"))
+        .filter(col("t").isNull || !col("t").rlike("^NCBITaxon:[1-9][0-9]*$"))
+        .count()
   }
 
   /** Report-only synonym diagnostics. Never writes or modifies the dataset. Lexical flags need review. */

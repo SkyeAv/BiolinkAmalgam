@@ -3,7 +3,7 @@ package biolinkamalgam
 import biolinkamalgam.config.Config
 import biolinkamalgam.export.{DatasetCard, Manifest, Parquet, Tsv}
 import biolinkamalgam.source.Registry
-import biolinkamalgam.transform.{CliqueMerge, Filters, Uniqueness}
+import biolinkamalgam.transform.{CliqueMerge, Filters, TaxonInference, Uniqueness}
 import org.apache.spark.sql.SparkSession
 
 import java.util.concurrent.{Executors, TimeUnit}
@@ -28,7 +28,9 @@ object Pipeline {
       audit: Boolean = false,
       clinvarFile: Option[os.Path] = None,
       oboDir: Option[os.Path] = None,
-      oboConfig: Option[os.Path] = None
+      oboConfig: Option[os.Path] = None,
+      // Identifier-namespace taxon inference (config/curie_taxa.yaml); None disables it.
+      curieTaxaConfig: Option[os.Path] = None
   )
 
   def run(spark: SparkSession, opts: Options): Seq[Manifest.Stage] = {
@@ -56,6 +58,7 @@ object Pipeline {
     val taxa = Config.loadTaxa(opts.taxaConfig)
     val promotePrefixes = Config.loadPromotePrefixes(opts.promoteConfig)
     val filters = Config.loadFilters(opts.filtersConfig)
+    val inference = opts.curieTaxaConfig.map(TaxonInference.load).getOrElse(TaxonInference.Rules.empty)
 
     // [1] INGEST — union all registered sources into the canonical clique table,
     // then apply declarative category/prefix/taxon-allowlist filters. With
@@ -97,7 +100,7 @@ object Pipeline {
     }
 
     var extraCliques: Option[org.apache.spark.sql.DataFrame] = None
-    val cliques =
+    val ingested =
       if (extraSources.isEmpty) coreCliques
       else
         timed("ingest_extra") {
@@ -118,6 +121,13 @@ object Pipeline {
           val df = coreCliques.unionByName(extra)
           (df, extra.count())
         }
+
+    // [1b] TAXON INFERENCE: taxonless cliques take the taxa of single-species identifier namespaces, then the
+    // allowlist is re-applied so they meet the same top-taxa cutoff as BABEL-tagged cliques. Runs after the
+    // ingest cache on purpose: curie_taxa.yaml edits never invalidate the multi-GB cache.
+    val cliques =
+      if (inference.isEmpty) ingested
+      else Filters.taxonAllowlisted(TaxonInference(ingested, inference), taxa.allowlist)
 
     // [2] MERGE CLIQUES — preferred-name string matching, scoped by (category, taxon).
     // Every DataFrame consumed by [5] is persisted: export runs long after these
@@ -176,7 +186,11 @@ object Pipeline {
         if (crossrefFut.isEmpty) os.remove(opts.outDir / "crossrefs.parquet", checkExists = false)
         val sourceMeta = opts.datasetMeta ++ Map(
           "clinvar" -> opts.clinvarFile.map(_.toString).getOrElse("none"),
-          "obo" -> opts.oboDir.map(_.toString).getOrElse("none")
+          "obo" -> opts.oboDir.map(_.toString).getOrElse("none"),
+          // provenance: which identifier-namespace mapping produced the run (first 12 hex of its digest)
+          "taxon_inference" -> (if (inference.isEmpty) "none"
+                                else s"${inference.fingerprint.hashCode.toLong.toHexString}"),
+          "taxon_allowlist" -> taxa.allowlist.size.toString
         )
         DatasetCard.write(opts.outDir, "biolinkamalgam.parquet", stages.toSeq, sourceMeta)
         () -> output.count()

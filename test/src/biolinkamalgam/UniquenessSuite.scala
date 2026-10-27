@@ -36,9 +36,19 @@ object UniquenessSuite extends TestSuite {
     test("output has exactly the canonical schema") {
       assert(
         result.output.schema.fieldNames.toSeq ==
-          Seq("CURIE", "PREFERRED_NAME", "CLASS", "SYNONYMS")
+          Seq("CURIE", "PREFERRED_NAME", "CLASS", "SYNONYMS", "TAXA")
       )
       assert(result.output.schema("SYNONYMS").dataType.sql == "ARRAY<STRING>")
+      assert(result.output.schema("TAXA").dataType.sql == "ARRAY<STRING>")
+    }
+
+    test("TAXA ships the clique's valid taxa, sorted; taxonless rows get an empty list") {
+      val rows = result.output.collect().map(r => r.getAs[String]("CURIE") -> r).toMap
+      def taxa(curie: String) = rows(curie).getAs[scala.collection.Seq[String]]("TAXA").toList
+      assert(taxa("NCBIGene:2538") == List("NCBITaxon:9606"))
+      assert(taxa("NCBIGene:9003") == List("NCBITaxon:10090"))
+      assert(taxa("CHEBI:17234") == List.empty)
+      assert(rows.values.forall(r => !r.isNullAt(r.fieldIndex("TAXA"))))
     }
 
     test("conflicts log the two expected arbitrations") {

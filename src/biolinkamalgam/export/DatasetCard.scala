@@ -44,6 +44,7 @@ object DatasetCard {
           |""".stripMargin
     val clinvar = meta.getOrElse("clinvar", "none")
     val obo = meta.getOrElse("obo", "none")
+    val allowlistSize = meta.getOrElse("taxon_allowlist", "100")
     val extraPara =
       (if (clinvar == "none") ""
        else
@@ -117,11 +118,14 @@ object DatasetCard {
        || `PREFERRED_NAME` | string | the clique's preferred name, as written |
        || `CLASS` | string | Biolink category, e.g. `biolink:Gene` |
        || `SYNONYMS` | list<string> | synonyms as originally written, sorted; a synonym appears in at most one row per (class, taxon scope) |
+       || `TAXA` | list<string> | the clique's NCBITaxon CURIEs, sorted; empty when taxonless. Taxa come from BABEL, or are inferred from single-species identifier namespaces (MGI, RGD, Ensembl species prefixes) |
        |$crossrefSection
        |## What was filtered
        |
        |- `biolink:Publication` and `biolink:Agent` cliques (titles and leftover-UMLS organizations).
-       |- Taxa outside the top-100 experimental taxon allowlist (taxonless and `biolink:OrganismTaxon` cliques kept).
+       |- Taxa outside the top-${allowlistSize} experimental taxon allowlist (taxonless and `biolink:OrganismTaxon` cliques kept).
+       |  Taxonless cliques whose identifiers are single-species (MGI, RGD, ZFIN, FB, WormBase, SGD, HGNC,
+       |  Ensembl species prefixes; `config/curie_taxa.yaml`) get that taxon first, so they meet the same cutoff.
        |- Names that are pure numbers (including decimals like `0.5`), contain `language`,
        |  `uncharacterized` or `hypothetical`, or equal a medically meaningless stopword
        |  (`unknown`, `none`, `the`, ...; full list in `config/filters.yaml`).
