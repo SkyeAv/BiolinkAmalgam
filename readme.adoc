@@ -226,3 +226,24 @@ and scope config). A receipt permits releasing a processed source
 shard while retaining resumability. Receipts track projected file names/sizes,
 not cryptographic hashes of projected data; they do not replace final dataset
 validation. No large bulk download is started by tests.
+
+=== RefSNP projection
+
+`src/biolinkamalgam/source/DbSnpSource.scala` projects every lifecycle partition
+into one compact identity row per rsID plus typed association edges:
+
+- One `status` per record from exactly one snapshot block: active (primary),
+  merged, withdrawn, unsupported, locationless (`nosnppos`). Contradictory or
+  missing lifecycle fails validation.
+- Output keeps only identity names: CURIE `DBSNP:rs<id>`, preferred `rs<id>`.
+  No allele, gene symbol or placement string ever becomes a locus alias.
+  Live partitions (active/unsupported/locationless) emit rows; merged and
+  withdrawn remain typed history, not synonym rows.
+- Typed crossref edges: `gene_association` to NCBIGene ids, `cites` to PMIDs,
+  `merged_into` to DBSNP:rs ids. Duplicated ids collapse per record.
+- Partial Spark schema reads only identifier/lifecycle fields; the huge
+  placements/frequencies payloads are never materialized. Splittable bzip2
+  keeps shard reads parallel without staging decompressed JSON.
+- Fixtures in `test/resources/dbsnp/` are reduced-column records from the
+  official b157 sample and first records of each exceptional partition;
+  identifiers and lifecycle fields are verbatim, other payloads dropped.
