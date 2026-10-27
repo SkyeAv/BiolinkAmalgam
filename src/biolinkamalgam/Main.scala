@@ -414,8 +414,11 @@ object Main {
     val spark = SparkSupport.session("biolinkamalgam-crossrefs", resolvedMaster, conf)
     try {
       val dir = os.Path(out, os.pwd)
+      // the declared per-predicate files only; never `.parts` debris from an interrupted export
+      val files = os.list(dir / "crossrefs").filter(f => os.isFile(f) && f.last.endsWith(".parquet")).map(_.toString)
+      require(files.nonEmpty, s"no crossref parquet files under ${dir / "crossrefs"}")
       val edges = biolinkamalgam.transform.CrossrefAnalysis
-        .edges(spark.read.parquet((dir / "crossrefs").toString)) // every per-predicate parquet
+        .edges(spark.read.parquet(files: _*))
         .persist(org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK)
       val report = dir / "crossref-report"
       os.makeDir.all(report)

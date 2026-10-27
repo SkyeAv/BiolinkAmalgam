@@ -29,7 +29,7 @@ object DatasetCard {
       crossrefPredicates: Seq[String] = Seq.empty
   ): String = {
     crossrefPredicates.foreach(p =>
-      require(p.matches("[a-z][a-z0-9_]*"), s"crossref predicate must be a lowercase identifier: $p")
+      require(p != null && p.matches("[a-z][a-z0-9_]*"), s"crossref predicate must be a lowercase identifier: $p")
     )
     val predicates = crossrefPredicates.distinct.sorted
     val crossrefConfigs = predicates

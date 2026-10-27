@@ -97,6 +97,13 @@ object PipelineSuite extends TestSuite {
         oboDir = Some(oboDir),
         oboConfig = Some(oboCfg)
       )
+      // a previous run's leftovers in BOTH output dirs: run1 gains no edges, run2 has a stale predicate,
+      // a pre-split single file and crash debris
+      Seq(out / "run1", out / "run2").foreach { d =>
+        os.write(d / "crossrefs" / "stale_predicate.parquet", "old", createFolders = true)
+        os.write(d / "crossrefs" / "xref.parquet.parts" / "part-0.parquet", "debris", createFolders = true)
+        os.write(d / "crossrefs.parquet", "old")
+      }
       Pipeline.run(spark, opts(out / "run1").copy(clinvarFile = None, oboDir = None))
       val fp = os.read(out / "cache" / "_fingerprint")
       val stages = Pipeline.run(spark, opts(out / "run2"))
@@ -123,7 +130,7 @@ object PipelineSuite extends TestSuite {
 
       // one parquet per predicate, so consumers pick which edge types to conflate
       val xrefDir = out / "run2" / "crossrefs"
-      val files = os.list(xrefDir).map(_.last).filter(_.endsWith(".parquet")).toSet
+      val files = os.list(xrefDir).map(_.last).filterNot(_.endsWith(".crc")).toSet // stale + debris pruned
       assert(
         files == Set("dbsnp_reference.parquet", "gene_association.parquet", "replaced_by.parquet", "xref.parquet")
       )
@@ -148,6 +155,7 @@ object PipelineSuite extends TestSuite {
       }
       // no extra sources => no crossref files and no crossref configs
       assert(!os.exists(out / "run1" / "crossrefs"))
+      assert(!os.exists(out / "run1" / "crossrefs.parquet"))
       assert(!os.read(out / "run1" / "README.md").contains("crossrefs_"))
     }
 

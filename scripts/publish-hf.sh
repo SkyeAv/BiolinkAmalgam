@@ -54,6 +54,8 @@ api.upload_folder(
     repo_id=repo,
     repo_type="dataset",
     allow_patterns=["biolinkamalgam.parquet", "crossrefs/*.parquet", "README.md"],
+    # fnmatch '*' crosses '/': never upload <predicate>.parts/ debris from an interrupted export
+    ignore_patterns=["*.parts/*"],
     # the pre-split single crossrefs.parquet would be an orphan beside the per-predicate configs
     delete_patterns=["crossrefs.parquet", "crossrefs/*.parquet"],
     commit_message="Publish BiolinkAmalgam build",

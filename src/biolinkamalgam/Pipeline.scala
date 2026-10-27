@@ -171,9 +171,9 @@ object Pipeline {
           else Seq.empty
         // Typed crossref edges, one parquet per predicate under crossrefs/ (one HF config each), so consumers
         // choose which edge types to conflate. Never merged here: they are associations, not equivalence.
+        // Each file is replaced only once its new footer is complete; stale files are pruned after every write
+        // succeeded, so a failed export never leaves the previous card pointing at deleted files.
         val crossrefDir = opts.outDir / "crossrefs"
-        os.remove.all(crossrefDir)
-        os.remove(opts.outDir / "crossrefs.parquet", checkExists = false) // pre-split layout
         val edges = Registry
           .crossrefs(spark, extraSources, opts.sample)
           .map(_.persist(org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK))
@@ -191,6 +191,11 @@ object Pipeline {
         auditFuts.foreach(_.get())
         crossrefFuts.foreach(_.get())
         edges.foreach(_.unpersist(blocking = false))
+        val expected = predicates.map(p => s"$p.parquet").flatMap(f => Seq(f, s".$f.crc")).toSet
+        if (predicates.isEmpty) os.remove.all(crossrefDir)
+        else os.list(crossrefDir).filterNot(f => expected(f.last)).foreach(os.remove.all(_))
+        os.remove(opts.outDir / "crossrefs.parquet", checkExists = false) // pre-split layout
+        os.remove(opts.outDir / ".crossrefs.parquet.crc", checkExists = false)
         val sourceMeta = opts.datasetMeta ++ Map(
           "clinvar" -> opts.clinvarFile.map(_.toString).getOrElse("none"),
           "obo" -> opts.oboDir.map(_.toString).getOrElse("none"),
