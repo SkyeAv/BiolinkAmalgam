@@ -66,7 +66,7 @@ object ClusterSuite extends TestSuite {
               )
             )
             assert(stages.find(_.name == "arbitrate").get.rows == 13)
-            val back = spark.read.parquet((out / "biolinkamalgam.parquet").toString)
+            val back = biolinkamalgam.export.DatasetFiles.cliques(spark, out)
             assert(back.count() == 13)
           } finally {
             spark.stop()

@@ -104,7 +104,7 @@ object SourceSuite extends TestSuite {
     test("null preferred name stays null") {
       val row = byLeader("UMLS:C9999999")
       assert(row.getAs[String]("preferred_name") == null)
-      assert(names(row) == List("nameless"))
+      assert(names(row).toSet == Set("UMLS:C9999999", "nameless"))
     }
 
     test("synonyms-only cliques list just the leader as identifiers") {

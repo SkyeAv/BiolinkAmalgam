@@ -2,7 +2,7 @@
 :toc: macro
 
 A Spark/Scala pipeline that turns https://github.com/NCATSTranslator/Babel[BABEL] outputs (plus your own ontologies
-and hand-curated manual entries) into a *single parquet file* ready to publish as a Hugging Face dataset, with one
+and hand-curated manual entries) into a Hugging Face dataset with `cliques` and `crossrefs` subsets, with one
 hard invariant:
 
 ____
@@ -18,7 +18,9 @@ dataset; snapshot `2026jul22`, 138,885,412 cliques). Publish a fresh run with `m
 
 == Output
 
-`biolinkamalgam.parquet`, one row per surviving clique leader:
+`cliques/<class>.parquet`, one row per surviving clique leader, one file/split per Biolink class.
+Split names use snake_case without `biolink:` (`Gene` becomes `gene`, `SmallMolecule` becomes `small_molecule`).
+All public column headers are uppercase:
 
 [cols="1,1,2"]
 |===
@@ -40,10 +42,13 @@ taxa also move such cliques out of the taxonless merge/arbitration scope into th
 human Ensembl-only genes arbitrate against BABEL-tagged human cliques (the namespace veto still guards merges).
 `validate` checks the cutoff on the shipped parquet.
 
-Beside it: `run_manifest.json` (stage metrics) and `README.md` — a generated Hugging Face dataset card with
+Beside the data: `run_manifest.json` (local stage metrics), `LICENSE.md` (upstream data terms), and `README.md` — a generated Hugging Face dataset card with
 frontmatter, schema docs, filter summary, and run stats. Pass `--audit` to also emit `conflicts.tsv`
 (arbitration audit) and `merges.tsv` (clique merge audit); they are impractical at BABEL scale, so they
 default off.
+
+CURIE-like or missing preferred names use the first sorted, gate-admitted non-CURIE synonym when available.
+Existing human-readable preferred names are preserved. This runs before merging and arbitration, after the ingest cache.
 
 == Build and test
 
@@ -91,7 +96,7 @@ their whole-file twins automatically (never both — no double ingest).
 |`config/filters.yaml` |category drops (`biolink:Publication`, `biolink:Agent`), per-category CURIE prefix drops,
 banned substrings (`language`, `uncharacterized`, `hypothetical`), dead-term stopwords, numeric-junk regex
 (incl. decimals like `0.5`), CURIE regex drops
-|`config/promote_prefixes.yaml` |identifier prefixes promoted to synonyms (INCHIKEY)
+|`config/promote_prefixes.yaml` |identifier promotion: quoted `'*'` indexes every leader/equivalent CURIE, matching fullmap
 |`config/download.yaml` |download engine + tuning, snapshot base URL, file exclusions (Publication parts skipped)
 |`config/profiles.yaml` |named Spark profiles (cores/memory/master/shuffle), cluster targeting as pure YAML
 |===
@@ -134,10 +139,9 @@ The config comments document gaps, including mixed-category ontologies and
 resources without a current OBO export. This is not complete Biolink coverage.
 
 When either source is enabled, typed edges are written beside the main parquet,
-one file per predicate: `crossrefs/<predicate>.parquet`, columns
-`subject, predicate, object, source`. The dataset card declares each file as its own
-Hugging Face config `crossrefs_<predicate>` with a `train` split, so you pick which
-edge types to conflate. Predicates are:
+one file per source: `crossrefs/<source>.parquet`, columns
+`SUBJECT, PREDICATE, OBJECT`. Source is encoded in the split name, not a column:
+`clinvar`, `obo_mp`, etc. Predicates remain typed associations, not equivalence:
 
 - `dbsnp_reference`: ClinVar variation to dbSNP locus (many-to-many).
 - `gene_association`: ClinVar variation to NCBIGene.
@@ -146,15 +150,24 @@ edge types to conflate. Predicates are:
 
 Edges retain source CURIEs, not post-merge leaders; an obsolete term may appear
 only in `crossrefs/`. No crossref is used as a synonym or merge key in the main
-parquet. The `default` config is `biolinkamalgam.parquet` alone:
+parquet. There are exactly two HF subsets: `cliques` (default) and `crossrefs`.
+If no source contributes edges, `crossrefs` has a schema-bearing zero-row `empty` split.
+Use `streaming=True` for that split; `datasets` rejects zero-row splits in materialized mode:
 
 ----
-load_dataset("SkyeAv/biolink-amalgam", split="train")                          # cliques
-load_dataset("SkyeAv/biolink-amalgam", "crossrefs_dbsnp_reference", split="train")  # one edge type
+load_dataset("SkyeAv/biolink-amalgam", "cliques", split="gene")
+load_dataset("SkyeAv/biolink-amalgam", "crossrefs", split="clinvar")
 ----
 
-`publish-hf.sh` uploads `crossrefs/*.parquet` and deletes a stale pre-split
-`crossrefs.parquet` from the repo.
+`publish-hf.sh` validates the card and uploads only its exact declared files, `README.md` and `LICENSE.md`.
+The same commit removes obsolete clique/crossref parquet files and the old single-file layout.
+Audit files, local metrics and interrupted-write debris stay local. Existing runs must be regenerated.
+Run upload-contract tests offline with `uv run --with pyyaml python -m unittest discover -s scripts -p 'test_publish_hf.py'`.
+
+The repository's Apache-2.0 license covers code, not aggregated data. The generated `LICENSE.md`
+links upstream terms, including attribution/share-alike and restricted-use resources.
+A license notice grants no redistribution rights; confirm authorization before public publication.
+Per-synonym provenance is not exported, so dropping restricted-prefix leaders alone cannot establish compliance.
 
 `make run ARGS="crossrefs --out <run> --top 200 --profile wenceslaus"` writes
 `crossref-report/summary.tsv` (edge and distinct-node counts by predicate, source

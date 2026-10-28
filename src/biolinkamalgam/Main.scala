@@ -1,7 +1,7 @@
 package biolinkamalgam
 
 import biolinkamalgam.config.Config
-import biolinkamalgam.export.Manifest
+import biolinkamalgam.export.{DatasetFiles, Manifest}
 import biolinkamalgam.ingest.{
   Aria2BulkDownloader,
   ChunkedJdkBulkDownloader,
@@ -204,7 +204,7 @@ object Main {
     }
     try {
       val dir = os.Path(out, os.pwd)
-      val df = spark.read.parquet((dir / "biolinkamalgam.parquet").toString)
+      val df = DatasetFiles.cliques(spark, dir)
 
       check(
         "schema == CURIE,PREFERRED_NAME,CLASS,SYNONYMS,TAXA",
@@ -322,7 +322,7 @@ object Main {
     val spark = SparkSupport.session("biolinkamalgam-scrub", resolvedMaster, conf)
     try {
       val dir = os.Path(out, os.pwd)
-      val df = spark.read.parquet((dir / "biolinkamalgam.parquet").toString)
+      val df = DatasetFiles.cliques(spark, dir)
       val cfg = Config.loadScrub(os.Path(scrubConfig, os.pwd))
       val scored = SynonymScrub
         .cohesionTable(df, cfg)
@@ -414,11 +414,8 @@ object Main {
     val spark = SparkSupport.session("biolinkamalgam-crossrefs", resolvedMaster, conf)
     try {
       val dir = os.Path(out, os.pwd)
-      // the declared per-predicate files only; never `.parts` debris from an interrupted export
-      val files = os.list(dir / "crossrefs").filter(f => os.isFile(f) && f.last.endsWith(".parquet")).map(_.toString)
-      require(files.nonEmpty, s"no crossref parquet files under ${dir / "crossrefs"}")
       val edges = biolinkamalgam.transform.CrossrefAnalysis
-        .edges(spark.read.parquet(files: _*))
+        .edges(DatasetFiles.crossrefs(spark, dir))
         .persist(org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK)
       val report = dir / "crossref-report"
       os.makeDir.all(report)

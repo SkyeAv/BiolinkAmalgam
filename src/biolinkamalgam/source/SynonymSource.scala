@@ -44,7 +44,7 @@ abstract class SynonymSource(val name: String, val priority: Int) {
 }
 
 /** BABEL compendia `.txt` — one JSONL clique per line; first identifier is the leader. Member labels fold into names;
-  * identifiers whose prefix is in `promotePrefixes` (default INCHIKEY) also contribute their CURIE string as a name.
+  * identifiers whose prefix is in `promotePrefixes` (`*` means all) also contribute their CURIE string as a name.
   */
 class BabelCompendiumSource(promotePrefixes: Set[String]) extends SynonymSource("babel:compendia", priority = 10) {
 
@@ -103,9 +103,9 @@ class BabelCompendiumSource(promotePrefixes: Set[String]) extends SynonymSource(
                   // the member's label, if any
                   when(id("l").isNotNull && length(id("l")) > 0, array(id("l")))
                     .otherwise(array()),
-                  // the CURIE itself, if its prefix is promoted (INCHIKEY by default)
+                  // the CURIE itself, if its prefix is promoted (wildcard includes all namespaces)
                   when(
-                    array_contains(lit(promoted.toArray), split(id("i"), ":")(0)),
+                    lit(promotePrefixes("*")) || array_contains(lit(promoted.toArray), split(id("i"), ":")(0)),
                     array(id("i"))
                   ).otherwise(array())
                 )

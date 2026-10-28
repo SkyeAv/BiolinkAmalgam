@@ -1,3 +1,6 @@
-# Test copy of the repo's config/promote_prefixes.yaml — keep in sync.
+# Fullmap parity: process_row indexes the leader CURIE and every equivalent identifier
+# (Tablassert rust/src/fullmap.rs). Promote full CURIEs, never bare local IDs; keep
+# class/taxon arbitration and no-conflation rules. Quoted '*' means every namespace.
+# Replace '*' with explicit prefixes to restrict identifier lookup coverage.
 promote_prefixes:
-  - INCHIKEY
+  - '*'

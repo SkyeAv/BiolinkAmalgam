@@ -85,8 +85,17 @@ object Schemas {
     )
   )
 
-  /** The deliverable: one parquet file, one row per clique leader. SYNONYMS keeps ORIGINAL strings, sorted; junk gates
-    * (filters.yaml) are the only filtering — real NLP (stemming, level keys) is downstream's job.
+  /** Public typed edges, partitioned by source (source lives in the split name, not in the file). */
+  val crossrefOutput: StructType = StructType(
+    Seq(
+      StructField("SUBJECT", StringType, nullable = false),
+      StructField("PREDICATE", StringType, nullable = false),
+      StructField("OBJECT", StringType, nullable = false)
+    )
+  )
+
+  /** Clique deliverable: one parquet per Biolink class, one row per clique leader. SYNONYMS keeps ORIGINAL strings,
+    * sorted; junk gates (filters.yaml) are the only filtering — real NLP (stemming, level keys) is downstream's job.
     */
   val output: StructType = StructType(
     Seq(

@@ -1,7 +1,7 @@
 # BiolinkAmalgam
 
 A Spark/Scala pipeline that turns BABEL outputs (plus your own ontology tables and
-hand-curated manual entries) into a **single parquet file** publishable as a Hugging
+hand-curated manual entries) into **class-split parquet files** publishable as a Hugging
 Face dataset (`SkyeAv/biolink-amalgam`), with one hard invariant:
 
 > Within a given **class × taxon scope**, a synonym belongs to exactly **one** CURIE.
@@ -42,15 +42,16 @@ Tablassert's fullmap. One NLP pipeline, one language — never two.
 
 ## The canonical output
 
-One file, `biolinkamalgam.parquet`, schema exactly:
+HF subset `cliques` (default): `cliques/<class>.parquet`, one split per Biolink class
+(snake_case without `biolink:`, e.g. `small_molecule`). Schema exactly:
 
 ```
 CURIE: string, PREFERRED_NAME: string, CLASS: string, SYNONYMS: array<string>, TAXA: array<string>
 ```
 
 One row per surviving clique leader. A clique whose names all lost arbitration (or failed
-the gates) still gets a row with empty SYNONYMS. Beside it: `run_manifest.json` and a
-generated `README.md` HF dataset card. `conflicts.tsv` + `merges.tsv` (full audit) are
+the gates) still gets a row with empty SYNONYMS. Beside it: local `run_manifest.json`,
+generated `README.md` HF dataset card and `LICENSE.md` upstream data terms. `conflicts.tsv` + `merges.tsv` (full audit) are
 opt-in via `--audit` — at BABEL scale they are hundreds of GB and unwritable in practice.
 
 ## Invariants and rules (do not break)
@@ -86,8 +87,12 @@ opt-in via `--audit` — at BABEL scale they are hundreds of GB and unwritable i
 - **Winner order** (merge and arbitration): preferred-name match → most synonyms →
   identifier count → source priority (lower wins; manual/custom 0, BABEL 10) → smallest
   CURIE. Total order, so reruns reproduce.
-- **INCHIKEY promotion**: identifier CURIEs whose prefix is in
-  `config/promote_prefixes.yaml` become synonyms of their clique (fullmap never did this).
+- **Identifier promotion**: `config/promote_prefixes.yaml` defaults to quoted `'*'`: every leader and equivalent
+  CURIE becomes a synonym, matching fullmap `process_row`. Never promote bare local IDs. Runs after the ingest
+  cache for all sources. Explicit prefixes restrict promotion.
+- **Preferred names**: before merge/arbitration, a CURIE-like or missing preferred name falls back to the first
+  sorted, gate-admitted non-CURIE synonym. Human-readable names stay unchanged; identifier-only cliques retain
+  their original preferred name.
 - **Dropped by default** (filters.yaml): `biolink:Publication` (PMID/doi/PMC titles) and
   `biolink:Agent` (BABEL carries it only as leftover-UMLS organization cliques — no
   ROR/GRID/ORCID/ISNI/VIAF exist in BABEL, verified against the 2025mar31/2026jul22
@@ -176,10 +181,14 @@ stay GTDB singletons, because two GTDB species sharing one taxid must never merg
   multiple alleles. SequenceVariant cliques never merge by preferred name.
 - `scripts/fetch-obo.sh <dir>` downloads `config/obo_sources.yaml`; `--obo <dir>` adds active own-prefix terms, EXACT
   synonyms and alt_ids. Config categories/licenses checked against Biolink 4.4.6 and OBO Foundry; gaps documented there.
-- Typed associations (`subject,predicate,object,source`) are written one file per predicate as
-  `crossrefs/<predicate>.parquet`, each its own HF config `crossrefs_<predicate>` (train split), so consumers choose
-  which edge types to conflate. Not equivalence; edges retain pre-merge source ids. No xref or gene association
-  enters synonyms or merges in the main parquet.
+- HF has exactly two subsets: `cliques` and `crossrefs`. Typed associations are written one file/split per source
+  as `crossrefs/<source>.parquet` (`clinvar`, `obo_mp`, etc.), uppercase columns `SUBJECT,PREDICATE,OBJECT`.
+  Source lives in the split name, not the parquet. With no edges, a schema-bearing zero-row `empty` split keeps
+  the subset declared (`datasets` requires streaming mode to load the zero-row split). Not equivalence;
+  edges retain pre-merge source IDs. No association enters synonyms/merges.
+- Publishing uploads only exact card-declared files and upstream `LICENSE.md`; it removes obsolete data in the same
+  commit. Apache-2.0 covers code, not upstream data. Per-name provenance is unavailable; prefix filtering alone
+  cannot prove licensing compliance. Confirm redistribution authorization before public publication.
 - Core ingest cache excludes additive ClinVar/OBO; a prefix clash fails loudly. Additional sources are fresh each run.
 - CliqueMerge vetoes any preferred-name group with disjoint identifiers under a shared namespace. Distinct PubChem CIDs
   or species-specific NCBIGene ids must not merge because of labels alone.

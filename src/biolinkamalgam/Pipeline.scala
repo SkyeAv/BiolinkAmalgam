@@ -1,9 +1,9 @@
 package biolinkamalgam
 
 import biolinkamalgam.config.Config
-import biolinkamalgam.export.{DatasetCard, Manifest, Parquet, Tsv}
+import biolinkamalgam.export.{DatasetCard, Manifest, Parquet, Splits, Tsv}
 import biolinkamalgam.source.Registry
-import biolinkamalgam.transform.{CliqueMerge, Filters, TaxonInference, Uniqueness}
+import biolinkamalgam.transform.{CliqueMerge, DisplayNames, Filters, TaxonInference, Uniqueness}
 import org.apache.spark.sql.SparkSession
 
 import java.util.concurrent.{Executors, TimeUnit}
@@ -125,9 +125,10 @@ object Pipeline {
     // [1b] TAXON INFERENCE: taxonless cliques take the taxa of single-species identifier namespaces, then the
     // allowlist is re-applied so they meet the same top-taxa cutoff as BABEL-tagged cliques. Runs after the
     // ingest cache on purpose: curie_taxa.yaml edits never invalidate the multi-GB cache.
-    val cliques =
+    val inferred =
       if (inference.isEmpty) ingested
       else Filters.taxonAllowlisted(TaxonInference(ingested, inference), taxa.allowlist)
+    val cliques = DisplayNames(inferred, promotePrefixes, filters)
 
     // [2] MERGE CLIQUES — preferred-name string matching, scoped by (category, taxon).
     // Every DataFrame consumed by [5] is persisted: export runs long after these
@@ -156,11 +157,20 @@ object Pipeline {
     // nobody reviews that, and writing it starved the local executor of heartbeats
     // (exit 56 on the 2026jul22 run). The small-scale test suite still audits.
     timed("export") {
+      import org.apache.spark.sql.functions.{col, element_at, typedLit}
       val pool = Executors.newFixedThreadPool(4)
       try {
-        val parquetFut =
-          pool.submit[Unit](() =>
-            Parquet.writeSingleFile(output, opts.outDir / "biolinkamalgam.parquet", opts.simpleExport)
+        // Hugging Face layout: two subsets. `cliques` has one split (file) per Biolink class; CLASS stays in the
+        // rows so a concatenated load keeps it. Class values are tiny (tens), so collecting them is driver-safe.
+        val classSplits = Splits.mapping(output.select("CLASS").distinct().collect().map(_.getString(0)).toSeq)
+        val cliquesFut =
+          pool.submit[Seq[String]](() =>
+            Parquet.writePartitioned(
+              output.withColumn(SplitColumn, element_at(typedLit(classSplits), col("CLASS"))),
+              SplitColumn,
+              opts.outDir / "cliques",
+              opts.simpleExport
+            )
           )
         val auditFuts =
           if (opts.audit)
@@ -169,33 +179,55 @@ object Pipeline {
               pool.submit[Unit](() => Tsv.writeSingleFile(merges, opts.outDir / "merges.tsv"))
             )
           else Seq.empty
-        // Typed crossref edges, one parquet per predicate under crossrefs/ (one HF config each), so consumers
-        // choose which edge types to conflate. Never merged here: they are associations, not equivalence.
-        // Each file is replaced only once its new footer is complete; stale files are pruned after every write
-        // succeeded, so a failed export never leaves the previous card pointing at deleted files.
+        // `crossrefs` subset: typed edges, one split (file) per source; the source is the split, so it is not a
+        // column. Never merged here: they are associations, not equivalence. Files are replaced only once complete
+        // and stale ones pruned after the write, so a failed export never leaves the previous card dangling.
         val crossrefDir = opts.outDir / "crossrefs"
         val edges = Registry
           .crossrefs(spark, extraSources, opts.sample)
           .map(_.persist(org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK))
         val predicates = edges.toSeq.flatMap(Registry.crossrefPredicates)
-        val crossrefFuts =
-          for (e <- edges.toSeq; p <- predicates)
-            yield pool.submit[Unit](() =>
-              Parquet.writeSingleFile(
-                e.filter(org.apache.spark.sql.functions.col("predicate") === p).orderBy("subject", "object", "source"),
-                crossrefDir / s"$p.parquet",
-                opts.simpleExport
-              )
+        val sourceSplits =
+          edges.map(e => Splits.mapping(e.select("source").distinct().collect().map(_.getString(0)).toSeq))
+        val crossrefFut = edges.zip(sourceSplits).map { case (e, splits) =>
+          pool.submit[Seq[String]](() =>
+            Parquet.writePartitioned(
+              e.select(
+                col("subject").as("SUBJECT"),
+                col("predicate").as("PREDICATE"),
+                col("object").as("OBJECT"),
+                element_at(typedLit(splits), col("source")).as(SplitColumn)
+              ),
+              SplitColumn,
+              crossrefDir,
+              opts.simpleExport,
+              sortBy = Seq("SUBJECT", "PREDICATE", "OBJECT")
             )
-        parquetFut.get()
+          )
+        }
+        val cliqueNames = cliquesFut.get()
         auditFuts.foreach(_.get())
-        crossrefFuts.foreach(_.get())
+        val writtenCrossrefs = crossrefFut.map(_.get()).getOrElse(Seq.empty)
         edges.foreach(_.unpersist(blocking = false))
-        val expected = predicates.map(p => s"$p.parquet").flatMap(f => Seq(f, s".$f.crc")).toSet
-        if (predicates.isEmpty) os.remove.all(crossrefDir)
-        else os.list(crossrefDir).filterNot(f => expected(f.last)).foreach(os.remove.all(_))
-        os.remove(opts.outDir / "crossrefs.parquet", checkExists = false) // pre-split layout
-        os.remove(opts.outDir / ".crossrefs.parquet.crc", checkExists = false)
+        val crossrefNames =
+          if (writtenCrossrefs.nonEmpty) writtenCrossrefs
+          else {
+            val empty = spark.createDataFrame(
+              spark.sparkContext.emptyRDD[org.apache.spark.sql.Row],
+              biolinkamalgam.schema.Schemas.crossrefOutput
+            )
+            Parquet.writeSingleFile(empty, crossrefDir / "empty.parquet", simple = true)
+            val expected = Set("empty.parquet", ".empty.parquet.crc")
+            os.list(crossrefDir).filterNot(f => expected(f.last)).foreach(os.remove.all(_))
+            Seq("empty")
+          }
+        // pre-subset layouts: single main parquet and single crossrefs parquet
+        Seq("biolinkamalgam.parquet", ".biolinkamalgam.parquet.crc", "crossrefs.parquet", ".crossrefs.parquet.crc")
+          .foreach(f => os.remove(opts.outDir / f, checkExists = false))
+        def info(dir: os.Path, names: Seq[String], values: Map[String, String]): Seq[DatasetCard.Split] = {
+          val byName = values.map(_.swap)
+          names.map(n => DatasetCard.Split(n, byName(n), Parquet.rowCount(dir / s"$n.parquet")))
+        }
         val sourceMeta = opts.datasetMeta ++ Map(
           "clinvar" -> opts.clinvarFile.map(_.toString).getOrElse("none"),
           "obo" -> opts.oboDir.map(_.toString).getOrElse("none"),
@@ -204,7 +236,18 @@ object Pipeline {
                                 else s"${inference.fingerprint.hashCode.toLong.toHexString}"),
           "taxon_allowlist" -> taxa.allowlist.size.toString
         )
-        DatasetCard.write(opts.outDir, "biolinkamalgam.parquet", stages.toSeq, sourceMeta, predicates)
+        DatasetCard.write(
+          opts.outDir,
+          info(opts.outDir / "cliques", cliqueNames, classSplits),
+          info(
+            crossrefDir,
+            crossrefNames,
+            if (writtenCrossrefs.isEmpty) Map("none" -> "empty") else sourceSplits.getOrElse(Map.empty)
+          ),
+          predicates,
+          sourceMeta + ("promoted_prefixes" -> promotePrefixes.toSeq.sorted.mkString(",")),
+          oboEntries.toSeq.flatMap(_._2.map(e => e.prefix -> e.license)).toMap
+        )
         () -> output.count()
       } finally {
         pool.shutdown()
@@ -216,6 +259,9 @@ object Pipeline {
     extraCliques.foreach(_.unpersist(blocking = false))
     stages.toSeq
   }
+
+  /** Transient partition column carrying the HF split name; never written into a file. */
+  private val SplitColumn = "__split"
 
   /** Cache validity key: snapshot file identities (name+size+mtime), the sample size, and the config that can change
     * the ingest output (taxa allowlist, promoted prefixes, category/prefix drops). Name-gate lists live in Uniqueness

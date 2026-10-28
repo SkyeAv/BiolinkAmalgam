@@ -15,6 +15,7 @@ assembly:
 # Run the test suite in parallel. Offline by construction: FixtureSnapshotProvider
 # throws on any non-local path, so no test can download anything.
 test:
+	uv run --with pyyaml python -m unittest discover -s scripts -p 'test_publish_hf.py'
 	./mill -j 0 biolinkamalgam.test
 
 # Start the local Spark master+worker, wait for registration, run ClusterSuite

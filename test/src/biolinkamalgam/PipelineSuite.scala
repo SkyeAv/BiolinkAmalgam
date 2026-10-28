@@ -1,5 +1,6 @@
 package biolinkamalgam
 
+import biolinkamalgam.export.DatasetFiles
 import utest._
 
 /** End-to-end local run: mini fixture snapshot + custom TSV -> parquet + reports, with the declarative ingest filters
@@ -34,10 +35,15 @@ object PipelineSuite extends TestSuite {
       assert(stages.find(_.name == "merge").get.rows == 13)
       assert(stages.find(_.name == "arbitrate").get.rows == 13)
 
-      // the deliverable: one parquet file
-      val parquet = out / "biolinkamalgam.parquet"
-      assert(os.exists(parquet))
-      val back = spark.read.parquet(parquet.toString)
+      val files = DatasetFiles.files(out / "cliques")
+      assert(files.nonEmpty)
+      assert(!os.exists(out / "biolinkamalgam.parquet"))
+      val back = DatasetFiles.cliques(spark, out)
+      files.foreach { f =>
+        val classes = spark.read.parquet(f.toString).select("CLASS").distinct().collect().map(_.getString(0))
+        assert(classes.length == 1)
+        assert(f.last == s"${biolinkamalgam.export.Splits.name(classes.head)}.parquet")
+      }
       assert(back.count() == 13)
       assert(back.schema.fieldNames.toSeq == Seq("CURIE", "PREFERRED_NAME", "CLASS", "SYNONYMS", "TAXA"))
       assert(
@@ -112,7 +118,7 @@ object PipelineSuite extends TestSuite {
       // 4 ClinVar variations + 2 rs loci (rs268 shared by two alleles) + 3 active own-prefix OBO terms
       assert(stages.find(_.name == "ingest_extra").get.rows == 9)
 
-      val back = spark.read.parquet((out / "run2" / "biolinkamalgam.parquet").toString)
+      val back = DatasetFiles.cliques(spark, out / "run2")
       val variants =
         back.filter("CLASS = 'biolink:SequenceVariant'").select("CURIE").collect().map(_.getString(0)).toSet
       assert(
@@ -128,35 +134,38 @@ object PipelineSuite extends TestSuite {
       assert(back.filter("CURIE = 'TEST:0000001'").count() == 1)
       assert(back.filter("CURIE = 'TEST:0000002'").count() == 0) // obsolete
 
-      // one parquet per predicate, so consumers pick which edge types to conflate
+      // one parquet per source; uppercase headers, no SOURCE column
       val xrefDir = out / "run2" / "crossrefs"
       val files = os.list(xrefDir).map(_.last).filterNot(_.endsWith(".crc")).toSet // stale + debris pruned
       assert(
-        files == Set("dbsnp_reference.parquet", "gene_association.parquet", "replaced_by.parquet", "xref.parquet")
+        files == Set("clinvar.parquet", "obo_test.parquet")
       )
       assert(!os.exists(out / "run2" / "crossrefs.parquet"))
-      def edges(predicate: String) = {
-        val df = spark.read.parquet((xrefDir / s"$predicate.parquet").toString)
-        assert(df.schema.fieldNames.toSeq == Seq("subject", "predicate", "object", "source"))
-        val rows = df.collect().map(r => (r.getString(0), r.getString(1), r.getString(2))).toSet
-        assert(rows.forall(_._2 == predicate)) // no predicate mixing across files
-        rows
+      def edges(source: String) = {
+        val df = spark.read.parquet((xrefDir / s"$source.parquet").toString)
+        assert(df.schema.fieldNames.toSeq == Seq("SUBJECT", "PREDICATE", "OBJECT"))
+        df.collect().map(r => (r.getString(0), r.getString(1), r.getString(2))).toSet
       }
-      val dbsnp = edges("dbsnp_reference")
+      val dbsnp = edges("clinvar")
       assert(dbsnp.contains(("CLINVAR:15043", "dbsnp_reference", "DBSNP:rs268")))
       assert(dbsnp.contains(("CLINVAR:15044", "dbsnp_reference", "DBSNP:rs268")))
-      assert(edges("replaced_by").contains(("TEST:0000002", "replaced_by", "TEST:0000003")))
-      assert(edges("xref").contains(("TEST:0000001", "xref", "MESH:D000001")))
-      assert(edges("gene_association").nonEmpty)
+      assert(edges("obo_test").contains(("TEST:0000002", "replaced_by", "TEST:0000003")))
+      assert(edges("obo_test").contains(("TEST:0000001", "xref", "MESH:D000001")))
+      assert(dbsnp.exists(_._2 == "gene_association"))
+      val restored = DatasetFiles.crossrefs(spark, out / "run2")
+      assert(restored.select("source").distinct().count() == 2)
       val card = os.read(out / "run2" / "README.md")
-      Seq("dbsnp_reference", "gene_association", "replaced_by", "xref").foreach { p =>
-        assert(card.contains(s"config_name: crossrefs_$p"))
-        assert(card.contains(s"path: crossrefs/$p.parquet"))
+      assert(card.contains("config_name: crossrefs"))
+      Seq("clinvar", "obo_test").foreach { s =>
+        assert(card.contains(s"split: $s"))
+        assert(card.contains(s"path: crossrefs/$s.parquet"))
       }
-      // no extra sources => no crossref files and no crossref configs
-      assert(!os.exists(out / "run1" / "crossrefs"))
+      assert(os.read(out / "run2" / "LICENSE.md").contains("TEST (OBO) | CC0-1.0"))
+      // No extra sources: keep the second subset loadable with a schema-bearing zero-row split.
+      assert(DatasetFiles.files(out / "run1" / "crossrefs").map(_.last) == Seq("empty.parquet"))
+      assert(DatasetFiles.crossrefs(spark, out / "run1").count() == 0)
       assert(!os.exists(out / "run1" / "crossrefs.parquet"))
-      assert(!os.read(out / "run1" / "README.md").contains("crossrefs_"))
+      assert(os.read(out / "run1" / "README.md").contains("config_name: crossrefs"))
     }
 
     test("ingest cache: second run reuses materialized cliques with identical output") {
@@ -172,12 +181,12 @@ object PipelineSuite extends TestSuite {
         ingestCache = Some(cache)
       )
       Pipeline.run(spark, opts)
-      val first = spark.read.parquet((out / "biolinkamalgam.parquet").toString).orderBy("CURIE").collect().toSeq
+      val first = DatasetFiles.cliques(spark, out).orderBy("CURIE").collect().toSeq
       assert(os.exists(cache / "_fingerprint"))
 
-      os.remove(out / "biolinkamalgam.parquet")
+      os.remove.all(out / "cliques")
       Pipeline.run(spark, opts) // cache hit path
-      val second = spark.read.parquet((out / "biolinkamalgam.parquet").toString).orderBy("CURIE").collect().toSeq
+      val second = DatasetFiles.cliques(spark, out).orderBy("CURIE").collect().toSeq
       assert(first.map(_.toString) == second.map(_.toString))
 
       // changing an ingest-affecting config (taxon allowlist) must invalidate
@@ -191,7 +200,7 @@ object PipelineSuite extends TestSuite {
         spark,
         opts.copy(taxaConfig = staging / "taxa.yaml", outDir = out / "alt-out")
       )
-      val altRows = spark.read.parquet((out / "alt-out" / "biolinkamalgam.parquet").toString).count()
+      val altRows = DatasetFiles.cliques(spark, out / "alt-out").count()
       assert(altRows == 12) // the mouse-only NCBIGene:9003 clique now fails the allowlist
     }
 
@@ -215,8 +224,8 @@ object PipelineSuite extends TestSuite {
       Pipeline.run(spark, opts(out / "inferred", inference = true))
       assert(os.read(out / "cache" / "_fingerprint") == fp) // inference sits after the cache
 
-      def taxa(run: String) = spark.read
-        .parquet((out / run / "biolinkamalgam.parquet").toString)
+      def taxa(run: String) = DatasetFiles
+        .cliques(spark, out / run)
         .collect()
         .map(r => r.getAs[String]("CURIE") -> r.getAs[scala.collection.Seq[String]]("TAXA").toList)
         .toMap

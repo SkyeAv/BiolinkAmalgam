@@ -1,12 +1,21 @@
 package biolinkamalgam.export
 
-/** Hugging Face dataset card: README.md with YAML frontmatter, generated per run so the card always matches the parquet
-  * it sits beside. Pure string generation (unit-testable, no Spark) plus a thin file writer.
+/** Hugging Face dataset card (`README.md`, YAML frontmatter) and data license (`LICENSE.md`), generated per run so both
+  * always match the files beside them. Pure string generation (unit-testable, no Spark) plus a thin file writer.
   *
-  * Upload flow: create a dataset repo on hf.co, drop in `biolinkamalgam.parquet` + this `README.md` — the hub's parquet
-  * auto-conversion and viewer pick it up with no further config.
+  * Hub layout: two subsets. `cliques` has one split per Biolink class (`cliques/<split>.parquet`); `crossrefs` has one
+  * split per edge source (`crossrefs/<split>.parquet`). Split names come from [[Splits]].
   */
 object DatasetCard {
+
+  val Repo = "SkyeAv/biolink-amalgam"
+
+  /** One split: its hub name, the value it was derived from (a Biolink class or a crossref source) and its row count.
+    */
+  case class Split(name: String, value: String, rows: Long) {
+    require(Splits.isValid(name), s"invalid split name: $name")
+    require(rows >= 0, s"negative row count for $name")
+  }
 
   /** HF size_categories bucket for a row count. */
   def sizeCategory(rows: Long): String =
@@ -16,191 +25,278 @@ object DatasetCard {
     else if (rows < 1000000) "100K<n<1M"
     else if (rows < 10000000) "1M<n<10M"
     else if (rows < 100000000) "10M<n<100M"
-    else "100M<n<1B"
+    else if (rows < 1000000000) "100M<n<1B"
+    else "1B<n<10B"
 
-  /** Render the card. `meta` carries run provenance (babel snapshot version, custom sources, spark master) — unknown
-    * values should be passed as "local"/"none", never fabricated.
+  private val PredicateMeaning = Map(
+    "dbsnp_reference" -> "ClinVar variation to the dbSNP rsID it references (one rsID can cover several alleles)",
+    "gene_association" -> "variant to the NCBIGene it lies in (location, not identity)",
+    "xref" -> "OBO term cross-reference (relevance only, per OBO 1.4)",
+    "replaced_by" -> "obsolete OBO term to its successor",
+    "cites" -> "dbSNP locus to a PubMed citation",
+    "merged_into" -> "retired dbSNP rsID to the rsID it was merged into"
+  )
+
+  private def splitConfig(subset: String, splits: Seq[Split], default: Boolean): String =
+    if (splits.isEmpty) ""
+    else {
+      val files = splits
+        .map(s => s"""|      - split: ${s.name}
+                                      |        path: $subset/${s.name}.parquet
+                                      |""".stripMargin)
+        .mkString
+      s"""|  - config_name: $subset
+          |${if (default) "    default: true\n" else ""}    data_files:
+          |$files""".stripMargin
+    }
+
+  private def splitTable(header: String, splits: Seq[Split]): String =
+    (s"| split | $header | rows |\n|---|---|---:|\n" +
+      splits.map(s => s"| `${s.name}` | `${s.value}` | ${s.rows} |").mkString("\n"))
+
+  private def validated(splits: Seq[Split], subset: String): Seq[Split] = {
+    val dup = splits.groupBy(_.name).collect { case (n, ss) if ss.size > 1 => n }
+    require(dup.isEmpty, s"duplicate $subset split names: ${dup.mkString(",")}")
+    splits.sortBy(_.name)
+  }
+
+  /** Render README.md. `meta` carries run provenance (babel snapshot, gtdb, clinvar, obo, taxon_allowlist); unknown
+    * values must be passed as "none", never fabricated.
     */
   def render(
-      parquetFile: String,
-      stages: Seq[Manifest.Stage],
+      cliqueSplits: Seq[Split],
+      crossrefSplits: Seq[Split],
+      predicates: Seq[String],
       meta: Map[String, String],
-      generated: String,
-      crossrefPredicates: Seq[String] = Seq.empty
+      generated: String
   ): String = {
-    crossrefPredicates.foreach(p =>
-      require(p != null && p.matches("[a-z][a-z0-9_]*"), s"crossref predicate must be a lowercase identifier: $p")
-    )
-    val predicates = crossrefPredicates.distinct.sorted
-    val crossrefConfigs = predicates
-      .map(p => s"""|  - config_name: crossrefs_$p
-                    |    data_files:
-                    |      - split: train
-                    |        path: crossrefs/$p.parquet
-                    |""".stripMargin)
-      .mkString
-    val rows = stages.find(_.name == "arbitrate").map(_.rows).getOrElse(0L)
-    val stageLines = stages
-      .map(s => f"| ${s.name}%-10s | ${s.rows}%12d | ${s.millis}%8d ms |")
-      .mkString("\n")
-    val babel = meta.getOrElse("babel", "unknown")
-    val gtdb = meta.getOrElse("gtdb", "none")
-    val gtdbPara =
-      if (gtdb == "none") ""
+    predicates.foreach(p => require(Splits.isValid(p), s"crossref predicate must be a lowercase identifier: $p"))
+    val cliques = validated(cliqueSplits, "cliques")
+    val crossrefs = validated(crossrefSplits, "crossrefs")
+    val totalCliques = cliques.map(_.rows).sum
+    val babel = meta.getOrElse("babel", "none")
+    def has(key: String) = meta.getOrElse(key, "none") != "none"
+    val allowlist = meta.getOrElse("taxon_allowlist", "0")
+    val taxaNote =
+      if (allowlist == "0") ""
       else
-        s"""|GTDB (Genome Taxonomy Database, `$gtdb`) contributes `biolink:OrganismTaxon` cliques:
-          |every GTDB rank becomes a `GTDB:`-prefixed taxon CURIE, and species carrying an
-          |`ncbi_species_taxid` crossref into their `NCBITaxon:` clique (visible as a `GTDB:`-prefixed
-          |synonym; at most one GTDB species per NCBI species — many-to-one mappings stay singletons).
-          |
-          |""".stripMargin
-    val clinvar = meta.getOrElse("clinvar", "none")
-    val obo = meta.getOrElse("obo", "none")
-    val allowlistSize = meta.getOrElse("taxon_allowlist", "100")
-    val extraPara =
-      (if (clinvar == "none") ""
-       else
-         """|ClinVar `variant_summary` contributes `biolink:SequenceVariant` cliques: one `CLINVAR:` row per
-            |variation and one `DBSNP:rs...` row per referenced rsID. An rsID can denote several alleles, so the
-            |two are never merged; their links live in the `crossrefs_dbsnp_reference` config.
-            |
-            |""".stripMargin) +
-        (if (obo == "none") ""
-         else
-           """|Additional OBO ontologies not in BABEL (`config/obo_sources.yaml`: MP, ZP, FYPO, WBPhenotype,
-              |APO, TO, MAXO, HsapDv, MmusDv, ZFS, FBdv, WBls, MOD, TAXRANK, FAO) contribute active own-prefix
-              |terms with their names, EXACT synonyms and alt_ids; BROAD/NARROW/RELATED synonyms are excluded.
-              |
-              |""".stripMargin)
-    val predicateMeaning = Map(
-      "dbsnp_reference" -> "ClinVar variation -> dbSNP rsID (one rsID can cover several alleles)",
-      "gene_association" -> "ClinVar variation -> NCBIGene it sits in (location, not identity)",
-      "xref" -> "OBO term cross-reference (relevance only per OBO 1.4)",
-      "replaced_by" -> "obsolete OBO term -> its successor"
-    )
+        s"- Except `biolink:OrganismTaxon`, rows with taxa keep at least one of the $allowlist allowlisted taxa (`config/taxa.yaml`)." +
+          (if (!has("taxon_inference")) "\n"
+           else
+             """ Taxonless rows first
+               |  inherit the taxon of single-species identifiers (MGI, RGD, ZFIN, FlyBase, WormBase, SGD, HGNC, Ensembl).
+               |""".stripMargin)
+    val promoted = meta.getOrElse("promoted_prefixes", "").split(",").filter(_.nonEmpty).toSeq
+    val promotedNote =
+      if (promoted.contains("*")) " Leader CURIEs and equivalent identifiers are indexed as synonyms (fullmap parity)."
+      else if (promoted.isEmpty) ""
+      else s" ${promoted.map(p => s"`$p:`").mkString(", ")} identifiers are added as synonyms."
+
+    val extraSources = Seq(
+      Option.when(has("gtdb"))(
+        "- [GTDB](https://gtdb.ecogenomic.org/): `GTDB:` taxa (`organism_taxon`); species carry their NCBI " +
+          "species taxid crossref as a `GTDB:` synonym of the `NCBITaxon:` row (at most one GTDB species per taxid)."
+      ),
+      Option.when(has("clinvar"))(
+        "- [ClinVar](https://www.ncbi.nlm.nih.gov/clinvar/) `variant_summary`: one `CLINVAR:` row per variation and " +
+          "one `DBSNP:rs...` row per referenced rsID (`sequence_variant`), never merged with each other."
+      ),
+      Option.when(has("obo"))(
+        "- OBO ontologies not in BABEL (`config/obo_sources.yaml`): active own-prefix terms with names, EXACT " +
+          "synonyms and alt_ids."
+      )
+    ).flatten
+    val sourcesPara =
+      if (extraSources.isEmpty) ""
+      else s"\nAdditional sources:\n\n${extraSources.mkString("\n")}\n"
+
+    val usageCrossrefs =
+      crossrefs.headOption
+        .map { s =>
+          val streaming = if (s.rows == 0) ", streaming=True" else ""
+          s"""\nedges = load_dataset("$Repo", "crossrefs", split="${s.name}"$streaming)"""
+        }
+        .getOrElse("")
+    val firstClique = cliques.find(_.name == "gene").orElse(cliques.headOption).map(_.name).getOrElse("gene")
+
     val crossrefSection =
-      if (predicates.isEmpty) ""
+      if (crossrefs.isEmpty) ""
       else {
-        val lines = predicates
-          .map(p => s"| `crossrefs_$p` | `crossrefs/$p.parquet` | ${predicateMeaning.getOrElse(p, "typed edge")} |")
-          .mkString("\n")
-        val loads = predicates
-          .map(p => s"""$p = load_dataset("SkyeAv/biolink-amalgam", "crossrefs_$p", split="train")""")
+        val preds = predicates.distinct.sorted
+          .map(p => s"- `$p`: ${PredicateMeaning.getOrElse(p, "typed edge")}")
           .mkString("\n")
         s"""|
-            |## Crossrefs (opt-in conflation)
+            |### `crossrefs`
             |
-            |Typed edges kept OUT of the main table, one config (train split) per predicate, so you choose which
-            |edge types to conflate. Columns: `subject, predicate, object, source`. Edges carry source CURIEs, not
-            |post-merge leaders; an obsolete term may appear only here.
+            |Typed associations, not equivalence. One split per source; source lives in the split name, not a column.
+            |Edges retain pre-merge IDs and may refer to rows absent from `cliques`. A zero-row `empty` split is emitted
+            |when no source contributes edges. Read that empty split with `streaming=True`; the datasets library
+            |rejects zero-row splits in materialized mode.
             |
-            || config | file | edge |
+            || column | type | meaning |
             ||---|---|---|
-            |$lines
+            || `SUBJECT` | string | source CURIE (pre-merge identifier, may be obsolete) |
+            || `PREDICATE` | string | edge type, below |
+            || `OBJECT` | string | target CURIE |
             |
-            |```python
-            |$loads
-            |```
+            |${splitTable("source", crossrefs)}
+            |
+            |$preds
             |""".stripMargin
       }
-    val extraLicense =
-      (if (clinvar == "none") "" else "\nClinVar and dbSNP are NCBI public-domain data.") +
-        (if (obo == "none") ""
-         else
-           "\nOBO ontologies carry CC-BY-3.0, CC-BY-4.0 or CC0-1.0 terms per ontology (see config/obo_sources.yaml).")
 
     s"""---
        |pretty_name: BiolinkAmalgam
+       |license: other
+       |license_name: biolink-amalgam-upstream
+       |license_link: LICENSE.md
        |configs:
-       |  - config_name: default
-       |    default: true
-       |    data_files:
-       |      - split: train
-       |        path: biolinkamalgam.parquet
-       |${crossrefConfigs}license: other
-       |license_name: babel-upstream-licenses
-       |task_categories:
+       |${splitConfig("cliques", cliques, default = true)}${splitConfig(
+        "crossrefs",
+        crossrefs,
+        default = false
+      )}task_categories:
        |  - other
        |tags:
        |  - biology
-       |  - bioinformatics
-       |  - entity-resolution
-       |  - named-entity-recognition
-       |  - biolink
+       |  - biomedical
+       |  - entity-linking
        |  - synonyms
+       |  - biolink
        |size_categories:
-       |  - ${sizeCategory(rows)}
+       |  - ${sizeCategory(totalCliques)}
        |---
        |
        |# BiolinkAmalgam
        |
-       |Biomedical entity synonym cliques built from [BABEL](https://github.com/TranslatorSRI/Babel)
-       |compendia and synonyms (snapshot: `$babel`), merged and arbitrated so that
-       |**within a (class, taxon scope), a synonym belongs to exactly one CURIE**.
-       |${gtdbPara}${extraPara}Synonyms are the ORIGINAL strings with junk filtered out (see below); normalization
-       |(stemming, level keys) is deliberately left to downstream consumers.
+       |Biomedical entity names for [Biolink](https://biolink.github.io/biolink-model/) classes, built from
+       |[BABEL](https://github.com/NCATSTranslator/Babel) snapshot `$babel`. Cliques that share a preferred name
+       |within a class and taxon scope may merge unless identifier namespaces conflict. Every synonym is assigned to one CURIE within its
+       |class and taxon scope. Strings are kept as written; normalization is left to consumers.
+       |$sourcesPara
+       |## Subsets
        |
-       |## Schema
+       |### `cliques` (default)
        |
-       |One row per surviving clique leader.
+       |One row per clique, one split per Biolink class.
        |
-       || Column | Type | Meaning |
+       || column | type | meaning |
        ||---|---|---|
        || `CURIE` | string | clique leader identifier |
-       || `PREFERRED_NAME` | string | the clique's preferred name, as written |
-       || `CLASS` | string | Biolink category, e.g. `biolink:Gene` |
-       || `SYNONYMS` | list<string> | synonyms as originally written, sorted; a synonym appears in at most one row per (class, taxon scope) |
-       || `TAXA` | list<string> | the clique's NCBITaxon CURIEs, sorted; empty when taxonless. Taxa come from BABEL, or are inferred from single-species identifier namespaces (MGI, RGD, Ensembl species prefixes) |
+       || `PREFERRED_NAME` | string | preferred name, as written |
+       || `CLASS` | string | Biolink class, e.g. `biolink:Gene` (split `gene`) |
+       || `SYNONYMS` | list<string> | sorted names; may be empty when every name lost arbitration |
+       || `TAXA` | list<string> | sorted `NCBITaxon:` CURIEs; empty when taxonless |
+       |
+       |${splitTable("class", cliques)}
        |$crossrefSection
-       |## What was filtered
-       |
-       |- `biolink:Publication` and `biolink:Agent` cliques (titles and leftover-UMLS organizations).
-       |- Taxa outside the top-${allowlistSize} experimental taxon allowlist (taxonless and `biolink:OrganismTaxon` cliques kept).
-       |  Taxonless cliques whose identifiers are single-species (MGI, RGD, ZFIN, FB, WormBase, SGD, HGNC,
-       |  Ensembl species prefixes; `config/curie_taxa.yaml`) get that taxon first, so they meet the same cutoff.
-       |- Names that are pure numbers (including decimals like `0.5`), contain `language`,
-       |  `uncharacterized` or `hypothetical`, or equal a medically meaningless stopword
-       |  (`unknown`, `none`, `the`, ...; full list in `config/filters.yaml`).
-       |- Conflated BABEL synonym files are never read: drug/chemical and gene/protein cliques stay distinct.
-       |
-       |## Generation
-       |
-       || stage | rows | time |
-       ||---|---|---|
-       |$stageLines
-       |
-       |Generated $generated by [BiolinkAmalgam](https://github.com/SkyeAv/BiolinkAmalgam).
-       |
        |## Usage
        |
        |```python
        |from datasets import load_dataset
        |
-       |ds = load_dataset("SkyeAv/biolink-amalgam", split="train")
-       |row = ds[0]
-       |print(row["CURIE"], row["PREFERRED_NAME"], row["CLASS"])
-       |print(row["SYNONYMS"])
+       |genes = load_dataset("$Repo", "cliques", split="$firstClique")
+       |cliques = load_dataset("$Repo", "cliques")  # DatasetDict, one entry per class$usageCrossrefs
        |```
        |
-       |## Licensing
+       |## Construction
        |
-       |BABEL aggregates many upstream biomedical resources with heterogeneous licenses
-       |(UMLS content in particular requires a UMLS license). This dataset inherits those
-       |upstream terms; check the [BABEL license summary](https://github.com/TranslatorSRI/Babel)
-       |for your intended use.${if (gtdb == "none") ""
-      else "\nGTDB data are CC-BY-SA-4.0 (share-alike); GTDB-derived taxa carry those terms."}$extraLicense
+       |- Synonyms are unique per (class, taxon scope); the same string may recur across classes or taxa.
+       |  Ties go to: preferred-name match, most synonyms, most identifiers, curated sources, smallest CURIE.
+       |- Conflated BABEL files are never read; drugs and chemicals, genes and proteins stay distinct.
+       |- A CURIE-like preferred name uses the first sorted, admitted non-CURIE synonym when available.
+       |  Existing human-readable preferred names are preserved.
+       |- `biolink:Publication` and `biolink:Agent` are dropped.
+       |$taxaNote
+       |- Junk names are removed: numbers, `uncharacterized`, `hypothetical`, `language`, and stopwords
+       |  (`config/filters.yaml`).$promotedNote
+       |
+       |Generated $generated by [BiolinkAmalgam](https://github.com/SkyeAv/BiolinkAmalgam).
+       |
+       |## License
+       |
+       |No single license covers this dataset: each name keeps the terms of the resource it came from, and several
+       |(UMLS, OMIM, DrugBank, KEGG, Orphanet, HMDB) restrict redistribution or commercial use. See
+       |[LICENSE.md](LICENSE.md) before use.
        |""".stripMargin
   }
 
-  /** Write README.md beside the parquet in `outDir`. `generated` defaults to today (UTC). */
+  /** Render LICENSE.md: upstream terms for every source this run included. `oboLicenses` maps OBO prefix to license. */
+  def license(meta: Map[String, String], oboLicenses: Map[String, String] = Map.empty): String = {
+    def has(key: String) = meta.getOrElse(key, "none") != "none"
+    val extra = Seq(
+      Option.when(has("gtdb"))("| GTDB | CC-BY-SA-4.0 | share-alike | https://gtdb.ecogenomic.org/about |"),
+      Option.when(has("clinvar"))(
+        "| ClinVar, dbSNP | public domain (NCBI) | none; cite NCBI | https://www.ncbi.nlm.nih.gov/home/about/policies/ |"
+      )
+    ).flatten ++ oboLicenses.toSeq.sorted.map { case (p, l) =>
+      s"| $p (OBO) | $l | per license | https://obofoundry.org/ontology/${p.toLowerCase(java.util.Locale.ROOT)}.html |"
+    }
+    s"""# BiolinkAmalgam data license
+       |
+       |BiolinkAmalgam redistributes identifiers, names and synonyms compiled by
+       |[BABEL](https://github.com/NCATSTranslator/Babel) and other sources. It adds no license of its own to that
+       |content: every record remains under the terms of its upstream resource, and you must comply with those terms.
+       |The build code is Apache-2.0 (https://github.com/SkyeAv/BiolinkAmalgam); BABEL's code is MIT. Neither code
+       |license applies to the data.
+       |
+       |A CURIE prefix identifies the leader's namespace, not the provenance of every synonym. Merged cliques can
+       |carry names from several resources; per-name source provenance is not exported. Removing restricted-prefix
+       |rows alone does not establish license compliance.
+       |
+       |## Restricted sources
+       |
+       |These may require an agreement or limit redistribution or commercial use. Check the terms for the exact
+       |upstream release and content used. A notice does not grant redistribution rights; public distribution must
+       |be authorized independently.
+       |
+       || source | terms | restriction | URL |
+       ||---|---|---|---|
+       || UMLS Metathesaurus (incl. SNOMED CT, RxNorm, MedDRA content) | UMLS Metathesaurus License | signed agreement; per-vocabulary restrictions; SNOMED CT affiliate terms | https://www.nlm.nih.gov/research/umls/knowledge_sources/metathesaurus/release/license_agreement.html |
+       || OMIM | Johns Hopkins copyright | no redistribution; commercial use needs a license | https://omim.org/help/copyright |
+       || DrugBank | DrugBank terms | non-commercial academic use; no redistribution | https://trust.drugbank.com/drugbank-trust-center/drugbank-terms-of-use |
+       || KEGG | Kanehisa Laboratories | non-academic use needs a commercial license | https://www.kegg.jp/kegg/legal.html |
+       || Orphanet | Orphadata terms | data transfer agreement | https://www.orphadata.com/faq/ |
+       || HMDB, SMPDB | custom | commercial use or redistribution needs permission | https://hmdb.ca/downloads |
+       |
+       |## Open sources
+       |
+       || source | terms | condition | URL |
+       ||---|---|---|---|
+       || NCBI Gene, NCBI Taxonomy, PubChem, MeSH | public domain (NLM/NCBI) | cite NCBI/NLM | https://www.ncbi.nlm.nih.gov/home/about/policies/ |
+       || HGNC | CC0-1.0 | none | https://www.genenames.org/about/license/ |
+       || Reactome | CC0-1.0 (data) | none | https://reactome.org/license |
+       || DOID | CC0-1.0 | none | https://obofoundry.org/ontology/doid.html |
+       || ChEBI | CC-BY-4.0 | attribution | https://www.ebi.ac.uk/chebi/ |
+       || UniProtKB | CC-BY-4.0 | attribution | https://www.uniprot.org/help/license |
+       || Rhea | CC-BY-4.0 | attribution | https://www.rhea-db.org/help/license-disclaimer |
+       || NCIt | CC-BY-4.0 | attribution | https://obofoundry.org/ontology/ncit.html |
+       || GO, MONDO | CC-BY-4.0 | attribution | https://obofoundry.org/ontology/go.html |
+       || UBERON | CC-BY-3.0 | attribution | https://obofoundry.org/ontology/uberon.html |
+       || FlyBase | CC-BY-4.0 | attribution | https://wiki.flybase.org/wiki/FlyBase:Citing_FlyBase |
+       || ChEMBL | CC-BY-SA-3.0 | attribution, share-alike | https://chembl.gitbook.io/chembl-interface-documentation/about |
+       || DrugCentral | CC-BY-SA-4.0 | attribution, share-alike | https://drugcentral.org/privacy |
+       || Guide to Pharmacology | ODbL-1.0 / CC-BY-SA-4.0 | attribution, share-alike | https://www.guidetopharmacology.org/about.jsp |
+       |${extra.mkString("\n")}
+       |
+       |Other BABEL inputs (including Ensembl, MGI, RGD, ZFIN, SGD, WormBase, HP, EFO, ENZYME, PANTHER, UniChem, UNII,
+       |Complex Portal, CLO, Wikidata and further OBO ontologies) are governed by their own published terms; check them
+       |for your use. This summary is informational, not legal advice, and upstream terms change; the linked terms
+       |prevail.
+       |""".stripMargin
+  }
+
+  /** Write README.md and LICENSE.md into `outDir`. `generated` defaults to today (UTC). */
   def write(
       outDir: os.Path,
-      parquetFile: String,
-      stages: Seq[Manifest.Stage],
+      cliqueSplits: Seq[Split],
+      crossrefSplits: Seq[Split],
+      predicates: Seq[String],
       meta: Map[String, String],
-      crossrefPredicates: Seq[String] = Seq.empty
+      oboLicenses: Map[String, String] = Map.empty
   ): Unit = {
     val generated = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString
-    os.write.over(outDir / "README.md", render(parquetFile, stages, meta, generated, crossrefPredicates))
+    os.write.over(outDir / "README.md", render(cliqueSplits, crossrefSplits, predicates, meta, generated))
+    os.write.over(outDir / "LICENSE.md", license(meta, oboLicenses))
   }
 }

@@ -1,6 +1,6 @@
 package biolinkamalgam
 
-import biolinkamalgam.export.{DatasetCard, Manifest, Parquet, Tsv}
+import biolinkamalgam.export.{DatasetCard, Parquet, Splits, Tsv}
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.functions._
 import utest._
@@ -65,10 +65,50 @@ object ExportSuite extends TestSuite {
       assert(back.count() == 25)
     }
 
-    test("dataset card renders frontmatter, schema, and run stats that match the run") {
+    test("split names are hub-safe, deterministic and collision checked") {
+      assert(Splits.name("biolink:Gene") == "gene")
+      assert(Splits.name("biolink:SmallMolecule") == "small_molecule")
+      assert(Splits.name("biolink:RNAProduct") == "rna_product")
+      assert(Splits.name("obo:HsapDv") == "obo_hsapdv")
+      assertThrows[IllegalArgumentException](Splits.name(null))
+      assertThrows[IllegalArgumentException](Splits.name(""))
+      assertThrows[IllegalArgumentException](Splits.name("..."))
+      assertThrows[IllegalArgumentException](Splits.mapping(Seq("obo:MP", "obo_MP")))
+    }
+
+    test("partitioned parquet writes each split once, drops partition column, sorts and prunes stale files") {
+      val dir = os.temp.dir(prefix = "biolinkamalgam-partitioned") / "crossrefs"
+      os.write(dir / "stale.parquet", "old", createFolders = true)
+      val input = spark
+        .range(0, 31)
+        .select(
+          concat(lit("CURIE:"), col("id")).as("SUBJECT"),
+          lit("xref").as("PREDICATE"),
+          lit("TARGET:1").as("OBJECT"),
+          when(col("id") % 2 === 0, lit("clinvar")).otherwise(lit("obo_mp")).as("__split")
+        )
+        .repartition(4)
+      val splits = Parquet.writePartitioned(input, "__split", dir, sortBy = Seq("SUBJECT", "PREDICATE", "OBJECT"))
+      assert(splits == Seq("clinvar", "obo_mp"))
+      assert(!os.exists(dir / "stale.parquet"))
+      assert(!os.exists(dir / os.up / "crossrefs.parts"))
+      splits.foreach { s =>
+        val f = dir / s"$s.parquet"
+        val df = spark.read.parquet(f.toString)
+        assert(df.columns.toSeq == Seq("SUBJECT", "PREDICATE", "OBJECT"))
+        val subjects = df.collect().map(_.getString(0)).toSeq
+        assert(subjects == subjects.sorted)
+        assert(Parquet.rowCount(f) == (if (s == "clinvar") 16L else 15L))
+      }
+      assert(Parquet.writePartitioned(input.limit(0), "__split", dir).isEmpty)
+      assert(os.list(dir).isEmpty)
+    }
+
+    test("dataset card renders two subsets, class/source splits and upstream terms") {
       val card = DatasetCard.render(
-        "biolinkamalgam.parquet",
-        Seq(Manifest.Stage("ingest", 15, 100), Manifest.Stage("arbitrate", 9, 50)),
+        Seq(DatasetCard.Split("gene", "biolink:Gene", 9)),
+        Seq.empty,
+        Seq.empty,
         Map("babel" -> "test-snapshot"),
         "2026-01-01"
       )
@@ -83,26 +123,45 @@ object ExportSuite extends TestSuite {
       assert(!card.contains("crossrefs_")) // no edges => only the default config
 
       val withEdges = DatasetCard.render(
-        "biolinkamalgam.parquet",
-        Seq(Manifest.Stage("arbitrate", 9, 50)),
+        Seq(
+          DatasetCard.Split("small_molecule", "biolink:SmallMolecule", 3),
+          DatasetCard.Split("gene", "biolink:Gene", 6)
+        ),
+        Seq(DatasetCard.Split("obo_mp", "obo:MP", 2), DatasetCard.Split("clinvar", "clinvar", 4)),
+        Seq("xref", "dbsnp_reference"),
         Map("babel" -> "test-snapshot", "clinvar" -> "vs.txt"),
-        "2026-01-01",
-        crossrefPredicates = Seq("xref", "dbsnp_reference")
+        "2026-01-01"
       )
       val frontmatter = withEdges.split("\n---\n", 2).head
-      // default config first and still the default; one train-split config per predicate, sorted
-      assert(frontmatter.indexOf("config_name: default") < frontmatter.indexOf("config_name: crossrefs_"))
-      assert(
-        frontmatter.contains(
-          "  - config_name: crossrefs_dbsnp_reference\n    data_files:\n      - split: train\n" +
-            "        path: crossrefs/dbsnp_reference.parquet"
-        )
+      assert(frontmatter.sliding("config_name:".length).count(_ == "config_name:") == 2)
+      assert(frontmatter.contains("config_name: cliques\n    default: true"))
+      assert(frontmatter.contains("config_name: crossrefs\n    data_files:"))
+      assert(frontmatter.contains("split: gene\n        path: cliques/gene.parquet"))
+      assert(frontmatter.contains("split: clinvar\n        path: crossrefs/clinvar.parquet"))
+      assert(!frontmatter.contains("split: train"))
+      assert(frontmatter.indexOf("split: gene") < frontmatter.indexOf("split: small_molecule"))
+      assert(withEdges.contains("load_dataset(\"SkyeAv/biolink-amalgam\", \"crossrefs\", split=\"clinvar\")"))
+      assert(withEdges.contains("\nedges = load_dataset("))
+      val emptyEdges = DatasetCard.render(
+        Seq(DatasetCard.Split("gene", "biolink:Gene", 9)),
+        Seq(DatasetCard.Split("empty", "none", 0)),
+        Seq.empty,
+        Map.empty,
+        "2026-01-01"
       )
-      assert(frontmatter.indexOf("crossrefs_dbsnp_reference") < frontmatter.indexOf("crossrefs_xref"))
-      assert(withEdges.contains("load_dataset(\"SkyeAv/biolink-amalgam\", \"crossrefs_xref\", split=\"train\")"))
+      assert(emptyEdges.contains("split=\"empty\", streaming=True)"))
+      assert(withEdges.contains("`SUBJECT` | string"))
+      assert(!withEdges.contains("`source`"))
+      assert(frontmatter.contains("license_link: LICENSE.md"))
+      assertThrows[IllegalArgumentException](DatasetCard.Split("../x", "x", 0))
       assertThrows[IllegalArgumentException](
-        DatasetCard.render("b.parquet", Seq.empty, Map.empty, "2026-01-01", crossrefPredicates = Seq("../x"))
+        DatasetCard.render(Seq.empty, Seq.empty, Seq("../x"), Map.empty, "2026-01-01")
       )
+      val license = DatasetCard.license(Map("gtdb" -> "metadata", "clinvar" -> "variants"), Map("MP" -> "CC-BY-4.0"))
+      assert(license.contains("UMLS Metathesaurus License"))
+      assert(license.contains("CC-BY-SA-4.0"))
+      assert(license.contains("MP (OBO) | CC-BY-4.0"))
+      assert(license.contains("Neither code"))
 
       assert(DatasetCard.sizeCategory(0) == "n<1K")
       assert(DatasetCard.sizeCategory(999) == "n<1K")

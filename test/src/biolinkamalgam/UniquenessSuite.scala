@@ -19,7 +19,7 @@ object UniquenessSuite extends TestSuite {
       Some(TestSupport.miniSnapshot),
       Some(TestSupport.customDir),
       None,
-      TestSupport.promotePrefixes
+      Set("INCHIKEY") // Isolate arbitration from wildcard identifier promotion (covered in DisplayNamesSuite).
     )
     val merged = CliqueMerge(Registry.loadAll(spark, sources), TestSupport.majorTaxa)
     val r = Uniqueness(merged.cliques, TestSupport.majorTaxa, TestSupport.filters)
