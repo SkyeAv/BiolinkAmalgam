@@ -4,8 +4,8 @@ import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{DataFrame, SparkSession}
 
-/** GTDB (Genome Taxonomy Database) metadata as a `biolink:OrganismTaxon` source — the BiolinkAmalgam port of BABEL PR
-  * #978. Input: one or more GTDB `bac120`/`ar53` metadata TSVs (plain or .gz), read by column NAME: `gtdb_taxonomy`
+/** GTDB (Genome Taxonomy Database) metadata as a `biolink:OrganismTaxon` source — the Amalgam port of BABEL PR #978.
+  * Input: one or more GTDB `bac120`/`ar53` metadata TSVs (plain or .gz), read by column NAME: `gtdb_taxonomy`
   * ("d__Bacteria; p__Pseudomonadota; ...; s__Escherichia coli") and `ncbi_species_taxid`.
   *
   * Every rank token becomes a GTDB clique: CURIE `GTDB:s__Escherichia_coli` (spaces to underscores, Bioregistry form),

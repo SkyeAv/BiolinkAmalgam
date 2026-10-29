@@ -1,6 +1,6 @@
 //| mvnDeps:
 //| - com.goyeau::mill-scalafix::0.6.0
-// BiolinkAmalgam build — Scala 2.13.16 + Spark 4.0.1 (matches the system Spark on PATH).
+// Amalgam build — Scala 2.13.16 + Spark 4.0.1 (matches the system Spark on PATH).
 // Two modules, one codebase:
 //   ./mill biolinkamalgam.assembly  → local jar, Spark bundled (`java -jar` / `local[*]` runs)
 //   ./mill cluster.assembly  → cluster jar, Spark compile-only (`spark-submit` provides it)

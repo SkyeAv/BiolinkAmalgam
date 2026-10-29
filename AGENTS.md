@@ -1,10 +1,16 @@
-# BiolinkAmalgam
+# Amalgam
+
+A biomedical metaontology integrating entity identifiers, names and typed cross-references across source
+ontologies, organized by Biolink class. Typed associations are not equivalence assertions.
 
 A Spark/Scala pipeline that turns BABEL outputs (plus your own ontology tables and
 hand-curated manual entries) into **class-split parquet files** publishable as a Hugging
-Face dataset (`SkyeAv/biolink-amalgam`), with one hard invariant:
+Face dataset (`SkyeAv/amalgam`), with one hard invariant:
 
 > Within a given **class × taxon scope**, a synonym belongs to exactly **one** CURIE.
+
+The public source repository is `https://github.com/SkyeAv/Amalgam`. Scala packages and the Mill module
+remain `biolinkamalgam` so existing build commands keep working.
 
 The dataset ships **original strings** with junk filtered out. There is **no stemmer in
 this codebase**: normalization (Porter2, level-one/level-two keys) is owned downstream by

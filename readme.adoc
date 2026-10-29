@@ -1,7 +1,11 @@
-= BiolinkAmalgam
+= Amalgam
 :toc: macro
 
-A Spark/Scala pipeline that turns https://github.com/NCATSTranslator/Babel[BABEL] outputs (plus your own ontologies
+Amalgam is a biomedical metaontology: a cross-resource integration layer of entity identifiers, names,
+and typed cross-references organized by Biolink class. It integrates source ontologies rather than replacing
+their semantics; typed associations are not equivalence assertions.
+
+The Spark/Scala pipeline turns https://github.com/NCATSTranslator/Babel[BABEL] outputs (plus your own ontologies
 and hand-curated manual entries) into a Hugging Face dataset with `cliques` and `crossrefs` subsets, with one
 hard invariant:
 
@@ -13,7 +17,10 @@ The dataset ships *original strings* with junk filtered out. Normalization (stem
 NOT done here — downstream consumers (e.g. Tablassert's fullmap DB) own the real NLP. This codebase contains no
 stemmer.
 
-Latest published build: https://huggingface.co/datasets/SkyeAv/biolink-amalgam[SkyeAv/biolink-amalgam] (public HF
+Source code: https://github.com/SkyeAv/Amalgam[SkyeAv/Amalgam] (public GitHub repository).
+The Scala package and Mill module remain `biolinkamalgam`; existing build commands are unchanged.
+
+Latest published build: https://huggingface.co/datasets/SkyeAv/amalgam[SkyeAv/amalgam] (public HF
 dataset; snapshot `2026jul22`, 138,885,412 cliques). Publish a fresh run with `make publish`.
 
 == Output
@@ -155,8 +162,8 @@ If no source contributes edges, `crossrefs` has a schema-bearing zero-row `empty
 Use `streaming=True` for that split; `datasets` rejects zero-row splits in materialized mode:
 
 ----
-load_dataset("SkyeAv/biolink-amalgam", "cliques", split="gene")
-load_dataset("SkyeAv/biolink-amalgam", "crossrefs", split="clinvar")
+load_dataset("SkyeAv/amalgam", "cliques", split="gene")
+load_dataset("SkyeAv/amalgam", "crossrefs", split="clinvar")
 ----
 
 `publish-hf.sh` validates the card and uploads only its exact declared files, `README.md` and `LICENSE.md`.

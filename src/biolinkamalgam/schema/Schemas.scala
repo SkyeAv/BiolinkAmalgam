@@ -2,7 +2,7 @@ package biolinkamalgam.schema
 
 import org.apache.spark.sql.types._
 
-/** Explicit StructTypes for every file shape BiolinkAmalgam reads or writes.
+/** Explicit StructTypes for every file shape Amalgam reads or writes.
   *
   * Never rely on Spark schema inference: on 30-40GB of gzipped JSONL it costs a full extra pass and can silently change
   * between snapshots. Every reader must use these.

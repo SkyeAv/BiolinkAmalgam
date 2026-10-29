@@ -1,6 +1,6 @@
 Repository scope notice (not part of the Apache License text below):
 
-The Apache-2.0 license covers BiolinkAmalgam software, not the biomedical data
+The Apache-2.0 license covers Amalgam software, not the biomedical data
 it processes or exports. Identifiers, names, synonyms and associations remain
 subject to upstream terms, including attribution, share-alike and restricted-use
 licenses. Each run generates LICENSE.md for the dataset with upstream notices

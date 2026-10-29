@@ -113,6 +113,13 @@ object ExportSuite extends TestSuite {
         "2026-01-01"
       )
       assert(card.startsWith("---\n"))
+      assert(DatasetCard.Repo == "SkyeAv/amalgam")
+      assert(card.contains("pretty_name: Amalgam"))
+      assert(card.contains("# Amalgam\n"))
+      assert(card.contains("biomedical metaontology"))
+      assert(card.contains("https://github.com/SkyeAv/Amalgam"))
+      assert(!card.contains("BiolinkAmalgam"))
+      assert(!card.contains("biolink-amalgam"))
       assert(card.contains("size_categories:\n  - n<1K"))
       assert(card.contains("test-snapshot"))
       assert(card.contains("`SYNONYMS` | list<string>"))
@@ -140,7 +147,7 @@ object ExportSuite extends TestSuite {
       assert(frontmatter.contains("split: clinvar\n        path: crossrefs/clinvar.parquet"))
       assert(!frontmatter.contains("split: train"))
       assert(frontmatter.indexOf("split: gene") < frontmatter.indexOf("split: small_molecule"))
-      assert(withEdges.contains("load_dataset(\"SkyeAv/biolink-amalgam\", \"crossrefs\", split=\"clinvar\")"))
+      assert(withEdges.contains("load_dataset(\"SkyeAv/amalgam\", \"crossrefs\", split=\"clinvar\")"))
       assert(withEdges.contains("\nedges = load_dataset("))
       val emptyEdges = DatasetCard.render(
         Seq(DatasetCard.Split("gene", "biolink:Gene", 9)),
@@ -158,6 +165,8 @@ object ExportSuite extends TestSuite {
         DatasetCard.render(Seq.empty, Seq.empty, Seq("../x"), Map.empty, "2026-01-01")
       )
       val license = DatasetCard.license(Map("gtdb" -> "metadata", "clinvar" -> "variants"), Map("MP" -> "CC-BY-4.0"))
+      assert(license.startsWith("# Amalgam data license"))
+      assert(license.contains("https://github.com/SkyeAv/Amalgam"))
       assert(license.contains("UMLS Metathesaurus License"))
       assert(license.contains("CC-BY-SA-4.0"))
       assert(license.contains("MP (OBO) | CC-BY-4.0"))

@@ -53,7 +53,7 @@ def publish(out, repo, api):
         allow_patterns=files,
         # Replace obsolete data in the same commit; unrelated Hub files are untouched.
         delete_patterns=["biolinkamalgam.parquet", "crossrefs.parquet", "cliques/*.parquet", "crossrefs/*.parquet"],
-        commit_message="Publish BiolinkAmalgam build",
+        commit_message="Publish Amalgam build",
     )
 
 
