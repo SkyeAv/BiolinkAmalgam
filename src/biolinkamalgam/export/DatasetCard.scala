@@ -148,7 +148,7 @@ object DatasetCard {
     s"""---
        |pretty_name: Amalgam
        |license: other
-       |license_name: amalgam-upstream
+       |license_name: polyform-noncommercial-1.0.0
        |license_link: LICENSE.md
        |configs:
        |${splitConfig("cliques", cliques, default = true)}${splitConfig(
@@ -219,7 +219,9 @@ object DatasetCard {
        |
        |## License
        |
-       |No single license covers this dataset: each name keeps the terms of the resource it came from, and several
+       |Amalgam code and original compilation rights are licensed under PolyForm Noncommercial 1.0.0.
+       |This does not relicense upstream data or restrict rights granted independently by upstream licensors.
+       |No single license covers all underlying content: each name keeps its upstream terms, and several
        |(UMLS, OMIM, DrugBank, KEGG, Orphanet, HMDB) restrict redistribution or commercial use. See
        |[LICENSE.md](LICENSE.md) before use.
        |""".stripMargin
@@ -239,10 +241,16 @@ object DatasetCard {
     s"""# Amalgam data license
        |
        |Amalgam redistributes identifiers, names and synonyms compiled by
-       |[BABEL](https://github.com/NCATSTranslator/Babel) and other sources. It adds no license of its own to that
-       |content: every record remains under the terms of its upstream resource, and you must comply with those terms.
-       |The build code is Apache-2.0 (https://github.com/SkyeAv/Amalgam); BABEL's code is MIT. Neither code
-       |license applies to the data.
+       |[BABEL](https://github.com/NCATSTranslator/Babel) and other sources.
+       |
+       |Amalgam code and original compilation rights (selection and arrangement, to the extent protectable)
+       |are licensed under [PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0).
+       |The license text is at https://github.com/SkyeAv/Amalgam/blob/main/LICENSE.
+       |For that grant, the licensed work includes Amalgam's original compilation contributions.
+       |Upstream content is not relicensed: every record retains its upstream terms and attribution requirements.
+       |This grant does not limit rights available independently under upstream licenses or public-domain status,
+       |and it grants no permissions that upstream licensors withhold. BABEL's code remains MIT.
+       |Previously distributed Apache-2.0 versions retain their existing grants.
        |
        |A CURIE prefix identifies the leader's namespace, not the provenance of every synonym. Merged cliques can
        |carry names from several resources; per-name source provenance is not exported. Removing restricted-prefix

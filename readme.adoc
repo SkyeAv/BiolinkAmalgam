@@ -171,8 +171,12 @@ The same commit removes obsolete clique/crossref parquet files and the old singl
 Audit files, local metrics and interrupted-write debris stay local. Existing runs must be regenerated.
 Run upload-contract tests offline with `uv run --with pyyaml python -m unittest discover -s scripts -p 'test_publish_hf.py'`.
 
-The repository's Apache-2.0 license covers code, not aggregated data. The generated `LICENSE.md`
-links upstream terms, including attribution/share-alike and restricted-use resources.
+Amalgam code and original compilation rights (selection and arrangement, to the extent protectable)
+are licensed under https://polyformproject.org/licenses/noncommercial/1.0.0[PolyForm Noncommercial 1.0.0].
+See `LICENSE` for the unmodified license and `LICENSING.md` for scope.
+Upstream data is not relicensed; independently available upstream rights remain unchanged.
+The generated `LICENSE.md` preserves upstream terms, including attribution/share-alike and restricted-use resources.
+Previously distributed Apache-2.0 versions retain their existing grants.
 A license notice grants no redistribution rights; confirm authorization before public publication.
 Per-synonym provenance is not exported, so dropping restricted-prefix leaders alone cannot establish compliance.
 

@@ -160,6 +160,7 @@ object ExportSuite extends TestSuite {
       assert(withEdges.contains("`SUBJECT` | string"))
       assert(!withEdges.contains("`source`"))
       assert(frontmatter.contains("license_link: LICENSE.md"))
+      assert(frontmatter.contains("license_name: polyform-noncommercial-1.0.0"))
       assertThrows[IllegalArgumentException](DatasetCard.Split("../x", "x", 0))
       assertThrows[IllegalArgumentException](
         DatasetCard.render(Seq.empty, Seq.empty, Seq("../x"), Map.empty, "2026-01-01")
@@ -170,7 +171,9 @@ object ExportSuite extends TestSuite {
       assert(license.contains("UMLS Metathesaurus License"))
       assert(license.contains("CC-BY-SA-4.0"))
       assert(license.contains("MP (OBO) | CC-BY-4.0"))
-      assert(license.contains("Neither code"))
+      assert(license.contains("PolyForm Noncommercial 1.0.0"))
+      assert(license.contains("Upstream content is not relicensed"))
+      assert(license.contains("Previously distributed Apache-2.0 versions retain their existing grants"))
 
       assert(DatasetCard.sizeCategory(0) == "n<1K")
       assert(DatasetCard.sizeCategory(999) == "n<1K")

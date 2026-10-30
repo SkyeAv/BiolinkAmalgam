@@ -193,7 +193,8 @@ stay GTDB singletons, because two GTDB species sharing one taxid must never merg
   the subset declared (`datasets` requires streaming mode to load the zero-row split). Not equivalence;
   edges retain pre-merge source IDs. No association enters synonyms/merges.
 - Publishing uploads only exact card-declared files and upstream `LICENSE.md`; it removes obsolete data in the same
-  commit. Apache-2.0 covers code, not upstream data. Per-name provenance is unavailable; prefix filtering alone
+  commit. PolyForm Noncommercial 1.0.0 covers code and original compilation rights, not upstream data.
+  Preserve upstream licenses, attribution and independently available rights. Per-name provenance is unavailable; prefix filtering alone
   cannot prove licensing compliance. Confirm redistribution authorization before public publication.
 - Core ingest cache excludes additive ClinVar/OBO; a prefix clash fails loudly. Additional sources are fresh each run.
 - CliqueMerge vetoes any preferred-name group with disjoint identifiers under a shared namespace. Distinct PubChem CIDs
